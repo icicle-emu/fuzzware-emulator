@@ -544,7 +544,7 @@ static uint32_t calc_icsr() {
     res |= (nvic.pending_irq << SCB_ICSR_VECTPENDING_Pos) & SCB_ICSR_VECTPENDING_Msk;
 
     // RETTOBASE
-    res |= (nvic.num_active > 1) << SCB_ICSR_RETTOBASE_Pos;
+    res |= (nvic.num_active <= 1) << SCB_ICSR_RETTOBASE_Pos;
 
     // VECTACTIVE
     res |= nvic.active_irq & SCB_ICSR_VECTACTIVE_Msk;
