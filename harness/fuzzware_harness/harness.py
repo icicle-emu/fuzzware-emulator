@@ -82,12 +82,13 @@ def configure_unicorn(args):
         if 'permissions' not in region:
             logger.warning(f"defaulting to RWX permissions for region {rname}")
             prot = 7 # UC_PROT_ALL
-        if 'r' in region['permissions'].lower():
-            prot |= 1
-        if 'w' in region['permissions'].lower():
-            prot |= 2
-        if 'x' in region['permissions'].lower():
-            prot |= 4
+        else:
+            if 'r' in region['permissions'].lower():
+                prot |= 1
+            if 'w' in region['permissions'].lower():
+                prot |= 2
+            if 'x' in region['permissions'].lower():
+                prot |= 4
 
         # Derive memory region size from backing file
         if 'size' not in region and 'file' in region:
