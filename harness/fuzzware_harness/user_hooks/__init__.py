@@ -9,7 +9,6 @@ from unicorn import UC_HOOK_BLOCK_UNCONDITIONAL
 
 from .. import globs
 from ..exit import do_exit
-from ..globs import debug_enabled
 
 
 logger = logging.getLogger("emulator")
@@ -103,8 +102,7 @@ def add_func_hook(uc, addr, func, do_return=True):
 def func_hook_handler(uc, addr, size, user_data):
     if addr in func_hooks:
         for hook in func_hooks[addr]:
-            if debug_enabled:
-                logger.info("Calling hook %s at %#08x" % (func_hooks[addr].__name__, addr))
+            logger.info("Calling hook %s at %#08x" % (func_hooks[addr].__name__, addr))
             try:
                 hook(uc)
             except:

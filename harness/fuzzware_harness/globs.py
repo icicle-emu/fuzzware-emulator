@@ -1,4 +1,3 @@
-debug_enabled = False
 input_file_name = None
 uc = None
 regions = {}

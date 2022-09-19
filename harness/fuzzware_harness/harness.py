@@ -17,6 +17,7 @@ from .user_hooks import (add_block_hook, add_func_hook,
 from .util import (bytes2int, load_config_deep, parse_address_value,
                    parse_symbols, resolve_region_file_paths)
 
+logging.basicConfig(stream=sys.stdout, level=logging.WARNING)
 logger = logging.getLogger("emulator")
 
 def unicorn_trace_syms(uc, address, size=0, user_data=None):
@@ -371,11 +372,8 @@ def main():
         logger.error("input file is no regular file")
         sys.exit(1)
 
-    debug_flags = [args.trace_memory, args.trace_funcs, args.breakpoints, args.gdb_port != 0]
-    if any(debug_flags):
-        args.debug = True
-
-    globs.debug_enabled = args.debug
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
 
     uc = configure_unicorn(args)
     globs.uc = uc

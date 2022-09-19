@@ -23,11 +23,10 @@ def invoke_exit_callbacks(status, kill_signal=-1):
     """
     global exit_hooks
 
-    from .globs import debug_enabled, uc
+    from .globs import uc
 
     for fn in exit_hooks:
-        if debug_enabled:
-            logger.debug(f"Calling exit hook {exit_hooks}")
+        logger.debug(f"Calling exit hook {exit_hooks}")
         try:
             fn(uc)
         except:
