@@ -937,10 +937,13 @@ void ExceptionReturn(uc_engine *uc, uint32_t ret_pc) {
 
     PopStack(uc);
 
-    nvic_assert(
-        (((ret_pc & NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG) != 0) == (nvic.active_irq == NVIC_NONE_ACTIVE)),
-        "[ExceptionReturn] expected thread mode return to end up with nvic.active_irq == NVIC_NONE_ACTIVE and vice versa."
-    );
+    if(((ret_pc & NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG) != 0) != (nvic.active_irq == NVIC_NONE_ACTIVE)) {
+        if(do_print_exit_info) {
+            puts("[ExceptionReturn] expected thread mode return to end up with nvic.active_irq == NVIC_NONE_ACTIVE and vice versa.");
+            fflush(stdout);
+        }
+        force_crash(uc, UC_ERR_FETCH_PROT);
+    }
 }
 
 // idea: just hook code for the magic is_exception_ret address range
