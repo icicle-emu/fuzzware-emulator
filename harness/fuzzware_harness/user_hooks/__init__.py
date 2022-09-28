@@ -102,7 +102,7 @@ def add_func_hook(uc, addr, func, do_return=True):
 def func_hook_handler(uc, addr, size, user_data):
     if addr in func_hooks:
         for hook in func_hooks[addr]:
-            logger.info("Calling hook %s at %#08x" % (func_hooks[addr].__name__, addr))
+            logger.debug(f"Calling hook {hook.__name__} at {addr:#08x}")
             try:
                 hook(uc)
             except:
