@@ -685,7 +685,7 @@ uc_err register_value_set_mmio_models(uc_engine *uc, uint64_t *starts, uint64_t 
 
         model_configs[i].num_vals = value_nums[i];
         model_configs[i].values = calloc(value_nums[i], sizeof(**value_lists));
-        for (int j = 0; j < value_nums[j]; ++j) {
+        for (int j = 0; j < value_nums[i]; ++j) {
             model_configs[i].values[j] = value_lists[i][j];
         }
 
