@@ -375,6 +375,10 @@ def main():
     if args.debug:
         logger.setLevel(logging.DEBUG)
 
+    debug_flags = [args.trace_memory, args.trace_funcs, args.breakpoints, args.gdb_port != 0]
+    if any(debug_flags):
+        args.debug = True
+
     uc = configure_unicorn(args)
     globs.uc = uc
 
