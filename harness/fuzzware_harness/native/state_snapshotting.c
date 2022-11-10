@@ -1,5 +1,6 @@
 #include "state_snapshotting.h"
 #include "native_hooks.h"
+#include <stdlib.h>
 
 static struct snapshotting_state_t state = {
     .num_allocated = 0,

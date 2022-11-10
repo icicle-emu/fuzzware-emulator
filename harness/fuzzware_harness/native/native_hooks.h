@@ -1,7 +1,7 @@
 #ifndef NATIVE_HOOKS_H
 #define NATIVE_HOOKS_H
 
-#include "unicorn/unicorn.h"
+#include "unicorn.h"
 #include "state_snapshotting.h"
 #include "uc_snapshot.h"
 

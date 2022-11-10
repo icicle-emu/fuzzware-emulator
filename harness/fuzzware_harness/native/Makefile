@@ -2,12 +2,13 @@ OWN_DIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 UC_DIRNAME := fuzzware-unicorn
 
 LIBDIR = $(OWN_DIR)/../../../unicorn/$(UC_DIRNAME)/
-INC=-I$(OWN_DIR)/../../../unicorn/$(UC_DIRNAME)/include
+# INC=-I$(OWN_DIR)/../../../unicorn/$(UC_DIRNAME)/include
+INC=
 BIN_EXT = .so
 
 CC = clang
 CFLAGS += -fpic -Wall -Werror $(INC) -g -O3
-LDFLAGS += -shared -L$(LIBDIR) -lunicorn
+LDFLAGS += -shared
 
 .PHONY: all clean
 

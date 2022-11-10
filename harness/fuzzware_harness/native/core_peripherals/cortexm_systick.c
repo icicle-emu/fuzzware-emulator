@@ -1,4 +1,5 @@
 #include "cortexm_systick.h"
+#include <stdlib.h>
 
 // 0. Constants
 uint32_t calibration_val = SYSTICK_TICKS_10_MS;
@@ -23,9 +24,9 @@ void hook_syst_mmio_read(uc_engine *uc, uc_mem_type type,
     switch (access_offset) {
         case REG_OFF_SYST_CSR:
             // Simply return value here
-            uc_mem_write(uc, addr, &systick.csr, sizeof(systick.csr));
+            uc->mem_write(uc->ctx, addr, &systick.csr, sizeof(systick.csr));
             /*
-                * HACK (non-standard behavior): 
+                * HACK (non-standard behavior):
                 * In case firmware explicitly asks whether time has passed
                 * multiple times within one systick period, indicate that it has.
                 * This makes time go faster for firmware waiting in busy loops via
@@ -36,15 +37,15 @@ void hook_syst_mmio_read(uc_engine *uc, uc_mem_type type,
         case REG_OFF_SYST_RVR:
             // Strictly speaking only 24 bits are used for the reload val
             out_val = get_timer_reload_val(systick.timer_ind) & SYST_RELOAD_VAL_MASK;
-            uc_mem_write(uc, addr, &out_val, sizeof(out_val));
+            uc->mem_write(uc->ctx, addr, &out_val, sizeof(out_val));
             break;
         case REG_OFF_SYST_CVR:
             // Strictly speaking only 24 bits are used for the reload val
             out_val = get_timer_ticker_val(systick.timer_ind) & SYST_RELOAD_VAL_MASK;
-            uc_mem_write(uc, addr, &out_val, sizeof(out_val));
+            uc->mem_write(uc->ctx, addr, &out_val, sizeof(out_val));
             break;
         case REG_OFF_SYST_CALIB:
-            uc_mem_write(uc, addr, &calibration_val, sizeof(calibration_val));
+            uc->mem_write(uc->ctx, addr, &calibration_val, sizeof(calibration_val));
             break;
         default:
             break;
@@ -113,7 +114,7 @@ void hook_syst_mmio_write(uc_engine *uc, uc_mem_type type,
 
 /*
  * https://developer.arm.com/documentation/dui0552/a/cortex-m3-peripherals/system-timer--systick/systick-control-and-status-register?lang=en
- * 
+ *
  * When ENABLE is set to 1, the counter loads the RELOAD value from the SYST_RVR register and then counts down.
  * On reaching 0, it sets the COUNTFLAG to 1 and optionally asserts the SysTick depending on the value of TICKINT.
  * It then loads the RELOAD value again, and begins counting.

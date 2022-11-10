@@ -1,7 +1,7 @@
 #ifndef INTERRUPT_TRIGGERS_H
 #define INTERRUPT_TRIGGERS_H
 
-#include <unicorn/unicorn.h>
+#include "unicorn.h"
 
 #define IRQ_FUZZ_MODE_FIXED 0
 #define IRQ_FUZZ_MODE_FUZZ_ENABLED_IRQ_INDEX 1

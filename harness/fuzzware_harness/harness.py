@@ -4,7 +4,8 @@ import os
 import sys
 import logging
 
-from unicorn import (UC_ARCH_ARM, UC_MODE_MCLASS, UC_MODE_THUMB, Uc)
+from icicle import Uc
+from unicorn import (UC_ARCH_ARM, UC_MODE_MCLASS, UC_MODE_THUMB)
 from unicorn.arm_const import UC_ARM_REG_PC, UC_ARM_REG_SP
 
 from . import globs, interrupt_triggers, native, timer, user_hooks
@@ -18,6 +19,7 @@ from .util import (bytes2int, load_config_deep, parse_address_value,
                    parse_symbols, resolve_region_file_paths)
 
 logger = logging.getLogger("emulator")
+logging.basicConfig(level=logging.DEBUG)
 
 def unicorn_trace_syms(uc, address, size=0, user_data=None):
     if address in uc.syms_by_addr:
@@ -51,8 +53,11 @@ def configure_unicorn(args):
         logger.error("Memory Configuration must be in config file")
         sys.exit(1)
 
+    # Icicle doesn't currently handle shadow stacks for context switches
+    disable_shadow_stack = any('Soldering_Iron' in region['file'] for rname, region in config['memory_map'].items() if 'file' in region)
+
     # Create the unicorn
-    uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
+    uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS, disable_shadow_stack)
 
     uc.symbols, uc.syms_by_addr = parse_symbols(config)
 
@@ -60,6 +65,10 @@ def configure_unicorn(args):
     vtor = globs.NVIC_VTOR_NONE
     entry_image_base = None
     resolve_region_file_paths(args.config, config)
+
+    debug_info = config.get("debug_info")
+    if debug_info:
+        uc.set_debug_file(debug_info)
 
     # Entry region recovery
     file_backed_regions = {rname: region for rname, region in config['memory_map'].items() if 'file' in region}
@@ -99,7 +108,7 @@ def configure_unicorn(args):
                 sys.exit(1)
 
         start, size = parse_address_value(uc.symbols, region['base_addr']), region['size']
-        logger.debug(f"Mapping region {str(rname)} at {hex(size)}, perms: {int(prot)}")
+        logger.debug(f"Mapping region {str(rname)} at {hex(start)} (size: {hex(size)}), perms: {int(prot)}")
 
         if size & (globs.PAGE_SIZE-1) != 0:
             logger.warning(f"Size 0x{size:x} of region '{rname}' not page aligned. Aligning to next page boundary size.")
@@ -374,7 +383,7 @@ def main():
     if any(debug_flags):
         args.debug = True
 
-    globs.debug_enabled = args.debug
+    globs.debug_enabled = True
 
     uc = configure_unicorn(args)
     globs.uc = uc

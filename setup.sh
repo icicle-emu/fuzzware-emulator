@@ -12,6 +12,14 @@ echo "[*] Building afl and Unicorn"
 UNICORN_QEMU_FLAGS="--python=/usr/bin/python3" make -C afl clean all || exit 1
 pushd unicorn; USERNAME=`whoami` ./build_unicorn.sh || { popd; exit 1; }; popd
 
+echo "[*] Building afl"
+make -C afl clean all || exit 1
+
+echo "[*] Building Icicle"
+pip3 install -U maturin
+pushd icicle; maturin build --release || { popd; exit 1; }; popd
+pip3 install --force-reinstall icicle/target/wheels/icicle-0.1.0*.whl
+
 echo "[*] Building native harness module"
 make -C harness/fuzzware_harness/native clean all || exit 1
 

@@ -1,7 +1,7 @@
 #ifndef NATIVE_TIMER_H
 #define NATIVE_TIMER_H
 
-#include <unicorn/unicorn.h>
+#include "unicorn.h"
 typedef void (*timer_cb)(uc_engine *uc, uint32_t id, void *user_data);
 
 #define MAX_TIMERS 32

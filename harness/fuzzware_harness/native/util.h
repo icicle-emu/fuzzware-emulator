@@ -2,7 +2,7 @@
 #define NATIVE_UTIL_H
 
 #include <unistd.h>
-#include <unicorn/unicorn.h>
+#include "unicorn.h"
 
 #define min(a, b) (a < b ? a : b)
 

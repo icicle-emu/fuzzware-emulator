@@ -1,5 +1,7 @@
-#include <unicorn/unicorn.h>
+#include "unicorn.h"
 #include "timer.h"
+#include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include "native_hooks.h"
 #include "core_peripherals/cortexm_nvic.h"
@@ -480,7 +482,7 @@ void timers_discard_snapshot(uc_engine *uc, void *snapshot) {
 uc_err init_timer_hook(uc_engine *uc, uint32_t global_timer_scale) {
     // Reset timer structs
 
-    if(uc_hook_add(uc, &timer_block_hook_handle, UC_HOOK_BLOCK_UNCONDITIONAL, (void *) timer_tick_block_hook, &timers.cur_countdown, 1, 0) != UC_ERR_OK) {
+    if(uc->block_hook_add(uc->ctx, &timer_block_hook_handle, UC_HOOK_BLOCK_UNCONDITIONAL, (void *) timer_tick_block_hook, &timers.cur_countdown, 1, 0) != UC_ERR_OK) {
         perror("[TIMER ERROR] init_timer_hook: Could not add timer block hook\n");
         exit(-1);
     }

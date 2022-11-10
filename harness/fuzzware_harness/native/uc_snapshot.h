@@ -1,7 +1,7 @@
 #ifndef UC_SNAPSHOT_H
 #define UC_SNAPSHOT_H
 
-#include "unicorn/unicorn.h"
+#include "unicorn.h"
 #include "native_hooks.h"
 
 #define PAGE_SIZE 0x1000
