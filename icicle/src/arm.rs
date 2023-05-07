@@ -171,6 +171,7 @@ pub(crate) fn add_arm_extras(vm: &mut Vm) {
         "isThreadModePrivileged",
         move |_: &dyn InstructionSource, _, _, output: pcode::VarNode, b: &mut BlockState| {
             b.pcode.push((output, Op::IntAnd, (control.truncate(1), 0b1_u8)));
+            b.pcode.push((output, Op::BoolNot, output));
             false
         },
     );
@@ -180,8 +181,15 @@ pub(crate) fn add_arm_extras(vm: &mut Vm) {
         "setThreadModePrivileged",
         move |_: &dyn InstructionSource, _, inputs: pcode::Inputs, _, b: &mut BlockState| {
             let is_privileged = inputs.first();
+
+            // nPRIV bit is 0 if privileged and 1 if unprivileged so we need to invert the
+            // `is_privileged` flag here.
+            let npriv_bit = b.pcode.alloc_tmp(1);
+            b.pcode.push((npriv_bit, Op::BoolNot, is_privileged));
+
+            // Write the bit to the CONTROL register.
             b.pcode.push((control, Op::IntAnd, (control, !0b1_u32)));
-            b.pcode.push((control.truncate(1), Op::IntOr, (control.truncate(1), is_privileged)));
+            b.pcode.push((control.truncate(1), Op::IntOr, (control.truncate(1), npriv_bit)));
             false
         },
     );
@@ -190,7 +198,10 @@ pub(crate) fn add_arm_extras(vm: &mut Vm) {
         vm,
         "isThreadMode",
         move |_: &dyn InstructionSource, _, _, output: pcode::VarNode, b: &mut BlockState| {
-            b.pcode.push((output, Op::IntEqual, (current_sp_mode_is_psp, 1_u32)));
+            // Processor is in thread mode if there is no active interrupt
+            let tmp = b.pcode.alloc_tmp(4);
+            b.pcode.push((tmp, Op::IntAnd, (xpsr_reg, 0x1ff_u32)));
+            b.pcode.push((output, Op::IntEqual, (tmp, 0)));
             false
         },
     );
@@ -232,16 +243,24 @@ pub(crate) fn add_arm_extras(vm: &mut Vm) {
             false
         },
     );
+
+    // Note: The processor ignores writes to control bit that sets the current stack pointer in
+    // handler mode, so this will never be called unless the current processor state is thread mode
+    // (handled in the SLEIGH speicification).
     override_op(
         vm,
         "setStackMode",
         move |_: &dyn InstructionSource, _, inputs: pcode::Inputs, _, b: &mut BlockState| {
+            let is_main_stack = inputs.first();
+            let is_process_stack = b.pcode.alloc_tmp(1);
+            b.pcode.push((is_process_stack, Op::BoolNot, is_main_stack));
+
             let mode = b.pcode.alloc_tmp(4);
-            b.pcode.push((mode, Op::ZeroExtend, inputs.first()));
+            b.pcode.push((mode, Op::ZeroExtend, is_process_stack));
 
             // Switch stacks if required.
             let mode_changed = b.pcode.alloc_tmp(1);
-            b.pcode.push((mode_changed, Op::IntEqual, (current_sp_mode_is_psp, mode)));
+            b.pcode.push((mode_changed, Op::IntNotEqual, (current_sp_mode_is_psp, mode)));
             let new_sp = b.pcode.alloc_tmp(4);
             b.pcode.select(new_sp, mode_changed, other_sp_reg, sp_reg);
             b.pcode.select(other_sp_reg, mode_changed, sp_reg, other_sp_reg);
