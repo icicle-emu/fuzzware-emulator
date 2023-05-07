@@ -8,9 +8,9 @@ make -C AFLplusplus clean all || {
     exit 1
 }
 
-echo "[*] Building afl and Unicorn"
-UNICORN_QEMU_FLAGS="--python=/usr/bin/python3" make -C afl clean all || exit 1
-pushd unicorn; USERNAME=`whoami` ./build_unicorn.sh || { popd; exit 1; }; popd
+# echo "[*] Building AFL"
+# UNICORN_QEMU_FLAGS="--python=/usr/bin/python3" make -C afl clean all || exit 1
+# pushd unicorn; USERNAME=`whoami` ./build_unicorn.sh || { popd; exit 1; }; popd
 
 echo "[*] Building afl"
 make -C afl clean all || exit 1

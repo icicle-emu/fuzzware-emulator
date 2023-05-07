@@ -54,11 +54,8 @@ def configure_unicorn(args):
         logger.error("Memory Configuration must be in config file")
         sys.exit(1)
 
-    # Icicle doesn't currently handle shadow stacks for context switches
-    disable_shadow_stack = any('Soldering_Iron' in region['file'] for rname, region in config['memory_map'].items() if 'file' in region)
-
     # Create the unicorn
-    uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS, disable_shadow_stack)
+    uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS, False)
 
     uc.symbols, uc.syms_by_addr = parse_symbols(config)
 

@@ -1,5 +1,8 @@
 use icicle_vm::{
-    cpu::lifter::{BlockState, InstructionSource, PcodeOpInjector},
+    cpu::{
+        lifter::{BlockState, InstructionSource, PcodeOpInjector},
+        ValueSource,
+    },
     Vm,
 };
 use pcode::Op;
@@ -31,20 +34,20 @@ impl SpecialRegs {
 const XPSR_NZCV_MASK: u32 = 0xf000_0000;
 
 pub(crate) fn read_xpsr(ctx: &mut Context) -> u32 {
-    let mut xpsr = ctx.vm.cpu.read_reg::<u32>(ctx.regs.xpsr) & !crate::arm::XPSR_NZCV_MASK;
-    xpsr |= (ctx.vm.cpu.read_reg::<u8>(ctx.regs.ng) as u32) << 31;
-    xpsr |= (ctx.vm.cpu.read_reg::<u8>(ctx.regs.zr) as u32) << 30;
-    xpsr |= (ctx.vm.cpu.read_reg::<u8>(ctx.regs.cy) as u32) << 29;
-    xpsr |= (ctx.vm.cpu.read_reg::<u8>(ctx.regs.ov) as u32) << 28;
+    let mut xpsr = ctx.vm.cpu.read_var::<u32>(ctx.regs.xpsr) & !crate::arm::XPSR_NZCV_MASK;
+    xpsr |= (ctx.vm.cpu.read_var::<u8>(ctx.regs.ng) as u32) << 31;
+    xpsr |= (ctx.vm.cpu.read_var::<u8>(ctx.regs.zr) as u32) << 30;
+    xpsr |= (ctx.vm.cpu.read_var::<u8>(ctx.regs.cy) as u32) << 29;
+    xpsr |= (ctx.vm.cpu.read_var::<u8>(ctx.regs.ov) as u32) << 28;
     xpsr
 }
 
 pub(crate) fn write_xpsr(ctx: &mut Context, xpsr: u32) {
-    ctx.vm.cpu.write_reg::<u8>(ctx.regs.ng, ((xpsr >> 31) & 0b1) as u8);
-    ctx.vm.cpu.write_reg::<u8>(ctx.regs.zr, ((xpsr >> 30) & 0b1) as u8);
-    ctx.vm.cpu.write_reg::<u8>(ctx.regs.cy, ((xpsr >> 29) & 0b1) as u8);
-    ctx.vm.cpu.write_reg::<u8>(ctx.regs.ov, ((xpsr >> 28) & 0b1) as u8);
-    ctx.vm.cpu.write_reg::<u32>(ctx.regs.xpsr, xpsr);
+    ctx.vm.cpu.write_var::<u8>(ctx.regs.ng, ((xpsr >> 31) & 0b1) as u8);
+    ctx.vm.cpu.write_var::<u8>(ctx.regs.zr, ((xpsr >> 30) & 0b1) as u8);
+    ctx.vm.cpu.write_var::<u8>(ctx.regs.cy, ((xpsr >> 29) & 0b1) as u8);
+    ctx.vm.cpu.write_var::<u8>(ctx.regs.ov, ((xpsr >> 28) & 0b1) as u8);
+    ctx.vm.cpu.write_var::<u32>(ctx.regs.xpsr, xpsr);
 }
 
 /// Most of this should probably be implemented as part of the SLEIGH specification instead.

@@ -1,5 +1,3 @@
-#![feature(backtrace)]
-
 pub mod fuzzware;
 
 mod arm;
@@ -13,7 +11,7 @@ use std::{
 use icicle_vm::{
     cpu::{
         mem::{perm, Mapping, ReadAfterHook, ReadHook, WriteHook},
-        Cpu,
+        Cpu, HookHandler,
     },
     Vm,
 };
@@ -67,7 +65,7 @@ pub(crate) struct Context {
 }
 
 impl Context {
-    pub fn new(disable_shadow_stack: bool) -> PyResult<Self> {
+    pub fn new(enable_shadow_stack: bool) -> PyResult<Self> {
         tracing_subscriber::fmt()
             .with_env_filter(tracing_subscriber::EnvFilter::from_env("ICICLE_LOG"))
             .without_time()
@@ -76,10 +74,10 @@ impl Context {
         std::env::set_var("ICICLE_ENABLE_JIT_VERIFIER", "false");
         let mut config = icicle_vm::cpu::Config::from_target_triple("arm-none");
 
-        let disable_shadow_stack = std::env::var("ICICLE_DISABLE_SHADOW_STACK")
+        let enable_shadow_stack = std::env::var("ICICLE_ENABLE_SHADOW_STACK")
             .ok()
-            .map_or(disable_shadow_stack, |x| x == "1");
-        config.enable_shadow_stack = !disable_shadow_stack;
+            .map_or(enable_shadow_stack, |x| x == "1");
+        config.enable_shadow_stack = enable_shadow_stack;
         let mut vm = icicle_vm::build(&config).map_err(into_py_err)?;
 
         arm::add_arm_extras(&mut vm);
@@ -88,7 +86,7 @@ impl Context {
 
         vm.env = Box::new(unicorn_api::FuzzwareEnvironment::new());
 
-        let path_tracer_hook = vm.cpu.add_hook(Box::new(unicorn_api::PathTracer::new()));
+        let path_tracer_hook = vm.cpu.add_hook(unicorn_api::PathTracer::new());
 
         Ok(Self {
             vm,
@@ -151,7 +149,7 @@ impl Context {
         if kind & uc_hook_type::UC_HOOK_MEM_WRITE_PROT != 0
             || kind & uc_hook_type::UC_HOOK_MEM_READ_PROT != 0
         {
-            let env = self.vm.env.as_any().downcast_mut::<FuzzwareEnvironment>().unwrap();
+            let env = self.vm.env.as_mut_any().downcast_mut::<FuzzwareEnvironment>().unwrap();
             fault = Some(env.add_mem_fault_hook(begin, end, kind, Box::new(hook))?)
         }
 
@@ -160,9 +158,9 @@ impl Context {
 
     pub fn add_block_hook<H>(&mut self, begin: u64, end: u64, hook: H) -> Option<usize>
     where
-        H: icicle_vm::cpu::Hook + 'static,
+        H: HookHandler + 'static,
     {
-        let hook_id = self.vm.cpu.add_hook(Box::new(hook));
+        let hook_id = self.vm.cpu.add_hook(hook);
         let injector_id =
             icicle_vm::injector::register_block_hook_injector(&mut self.vm, begin, end, hook_id);
         Some(self.register_hook(HookKind::Block { injector_id }))
@@ -227,9 +225,9 @@ impl Uc {
 #[pymethods]
 impl Uc {
     #[new]
-    fn new(arch: i32, mode: u32, disable_shadow_stack: bool) -> PyResult<Self> {
-        eprintln!("Uc.__init__({arch}, {mode}, {disable_shadow_stack})");
-        let mut ctx = Box::new(Context::new(disable_shadow_stack)?);
+    fn new(arch: i32, mode: u32, enable_shadow_stack: bool) -> PyResult<Self> {
+        eprintln!("Uc.__init__({arch}, {mode}, {enable_shadow_stack})");
+        let mut ctx = Box::new(Context::new(enable_shadow_stack)?);
         unsafe { ctx.build_vtable() };
 
         let vtable = ctx.vtable.as_mut().unwrap().as_mut() as *mut fuzzware::uc_engine;
@@ -238,8 +236,9 @@ impl Uc {
         Ok(Self { ctx: UnsafeCell::new(ctx) })
     }
 
-    #[args(timeout = "0", count = "0")]
-    fn emu_start(&mut self, _begin: u64, _until: u64, _timeout: u64, _count: u64) -> PyResult<()> {
+    #[pyo3(signature = (begin, until, timeout=0, count=0))]
+    #[allow(unused_variables)]
+    fn emu_start(&mut self, begin: u64, until: u64, timeout: u64, count: u64) -> PyResult<()> {
         Err(PyValueError::new_err("unimplemented: emu_start"))
     }
 
@@ -247,7 +246,6 @@ impl Uc {
         Err(PyValueError::new_err("unimplemented: emu_stop"))
     }
 
-    #[args(opt = "None")]
     fn reg_read(&self, regid: i32, _opt: Option<&str>) -> PyResult<u64> {
         let value = unsafe { &mut *self.ctx.get() }
             .get_reg_slice(regid)
@@ -286,7 +284,7 @@ impl Uc {
         self.ctx.get_mut().vm.cpu.mem.write_bytes(address, data, perm::NONE).map_err(into_py_err)
     }
 
-    #[args(perms = "fuzzware::uc_prot::UC_PROT_ALL")]
+    #[pyo3(signature = (address, size, perms=fuzzware::uc_prot::UC_PROT_ALL))]
     fn mem_map(&mut self, address: u64, size: u64, perms: u32) -> PyResult<()> {
         let perms = uc_perms_to_icicle_perms(perms);
         eprintln!("Uc.mem_map({address:#x}, {size:#x}, {})", perm::display(perms));
@@ -296,7 +294,7 @@ impl Uc {
             .vm
             .cpu
             .mem
-            .map_memory(address, address + size, Mapping { perm: perms | perm::INIT, value: 0x0 })
+            .map_memory_len(address, size, Mapping { perm: perms | perm::INIT, value: 0x0 })
         {
             return Err(PyValueError::new_err("map_memory failed"));
         }
@@ -311,7 +309,7 @@ impl Uc {
         Err(PyValueError::new_err("unimplemented: mem_unmap"))
     }
 
-    #[args(perms = "fuzzware::uc_prot::UC_PROT_ALL")]
+    #[pyo3(signature = (address, size, perms=fuzzware::uc_prot::UC_PROT_ALL))]
     fn mem_protect(&mut self, address: u64, size: u64, perms: u32) -> PyResult<()> {
         let perms = uc_perms_to_icicle_perms(perms);
         eprintln!("Uc.mem_protect({address:#x}, {size:#x}, {})", perm::display(perms));
@@ -322,7 +320,7 @@ impl Uc {
         Err(PyValueError::new_err("unimplemented: query"))
     }
 
-    #[args(begin = "1", end = "0", _arg1 = "0")]
+    #[pyo3(signature = (htype, callback, user_data=None, begin=1, end=0, _arg1=0))]
     fn hook_add<'py>(
         mut self_: PyRefMut<'py, Self>,
         htype: uc_hook_type::Type,
@@ -361,10 +359,21 @@ impl Uc {
     }
 
     fn set_debug_file(&mut self, path: String) -> PyResult<()> {
-        let env = self.ctx.get_mut().vm.env.as_any().downcast_mut::<FuzzwareEnvironment>().unwrap();
+        let env =
+            self.ctx.get_mut().vm.env.as_mut_any().downcast_mut::<FuzzwareEnvironment>().unwrap();
         env.set_debug_info(path.as_ref()).map_err(|e| PyValueError::new_err(e))
     }
 
+    #[pyo3(signature = (
+        py_exit_hook,
+        mmio_regions,
+        py_default_mmio_user_data,
+        exit_at_bbls,
+        exit_at_hit_num,
+        p_do_print_exit_info,
+        fuzz_consumption_timeout,
+        p_instr_limit
+    ))]
     fn native_init<'py>(
         &mut self,
         py: Python<'py>,
@@ -614,6 +623,7 @@ impl Uc {
         Ok(result)
     }
 
+    #[pyo3(signature = (bbl_set_trace_path, bbl_hash_path, mmio_set_trace_path, mmio_ranges))]
     fn native_init_tracing(
         &mut self,
         mut bbl_set_trace_path: Option<Vec<u8>>,
@@ -666,6 +676,7 @@ impl Uc {
         Ok(result)
     }
 
+    #[pyo3(signature = (reload_value, callback, isr_number))]
     fn add_timer<'py>(
         &mut self,
         py: Python<'py>,
@@ -729,13 +740,9 @@ impl PythonHook {
     }
 }
 
-impl icicle_vm::cpu::Hook for PythonHook {
-    fn call(&mut self, _cpu: &mut Cpu, pc: u64) {
-        self.do_call(|callback, uc, user_data| callback.call1((uc, pc, 0, user_data)))
-    }
-
-    fn as_any(&mut self) -> &mut dyn std::any::Any {
-        self
+impl HookHandler for PythonHook {
+    fn call(data: &mut Self, _cpu: &mut Cpu, pc: u64) {
+        data.do_call(|callback, uc, user_data| callback.call1((uc, pc, 0, user_data)))
     }
 }
 

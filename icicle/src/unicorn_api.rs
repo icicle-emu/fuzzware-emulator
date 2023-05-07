@@ -7,7 +7,7 @@ use icicle_vm::{
     cpu::{
         debug_info::{DebugInfo, SourceLocation},
         mem::perm,
-        CpuSnapshot, ExceptionCode, Hook,
+        CpuSnapshot, ExceptionCode, HookHandler, ValueSource,
     },
     VmExit,
 };
@@ -91,14 +91,10 @@ impl PathTracer {
     }
 }
 
-impl icicle_vm::cpu::Hook for PathTracer {
-    fn call(&mut self, cpu: &mut icicle_vm::cpu::Cpu, pc: u64) {
+impl HookHandler for PathTracer {
+    fn call(data: &mut Self, cpu: &mut icicle_vm::cpu::Cpu, pc: u64) {
         let fuzz_offset = unsafe { crate::fuzzware::fuzz_consumed() };
-        self.blocks.push((pc, cpu.icount(), fuzz_offset as u64));
-    }
-
-    fn as_any(&mut self) -> &mut dyn std::any::Any {
-        self
+        data.blocks.push((pc, cpu.icount(), fuzz_offset as u64));
     }
 }
 
@@ -180,30 +176,12 @@ impl icicle_vm::cpu::mem::ReadAfterHook for UnicornHook {
 // uc_engine *uc, uint64_t addr, int size, void *user_data
 type BlockCallback = unsafe extern "C" fn(*mut uc_engine, u64, u32, *mut c_void) -> u8;
 
-extern "sysv64" fn uc_call_translator(_: *mut icicle_vm::cpu::Cpu, addr: u64, userdata: *mut ()) {
-    unsafe {
-        let uc_hook = &mut *userdata.cast::<UnicornHook>();
-        let func_ptr: BlockCallback = std::mem::transmute(uc_hook.callback);
-        func_ptr(uc_hook.vtable, addr, 0, uc_hook.userdata);
-    }
-}
-
-impl icicle_vm::cpu::Hook for UnicornHook {
-    fn call(&mut self, _cpu: &mut icicle_vm::cpu::Cpu, addr: u64) {
+impl HookHandler for UnicornHook {
+    fn call(data: &mut Self, _cpu: &mut icicle_vm::cpu::Cpu, addr: u64) {
         unsafe {
-            let func_ptr: BlockCallback = std::mem::transmute(self.callback);
-            func_ptr(self.vtable, addr, 0, self.userdata);
+            let func_ptr: BlockCallback = std::mem::transmute(data.callback);
+            func_ptr(data.vtable, addr, 0, data.userdata);
         }
-    }
-
-    fn as_ptr(
-        &self,
-    ) -> Option<(extern "sysv64" fn(*mut icicle_vm::cpu::Cpu, u64, *mut ()), *mut ())> {
-        Some((uc_call_translator, (self as *const UnicornHook as *mut UnicornHook).cast()))
-    }
-
-    fn as_any(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 
@@ -278,7 +256,7 @@ impl FuzzwareEnvironment {
             cpu.block_offset = 0;
 
             // Trigger the hook.
-            hook.call(cpu, cpu.read_pc());
+            UnicornHook::call(hook, cpu, cpu.read_pc());
         }
     }
 }
@@ -342,10 +320,6 @@ impl icicle_vm::cpu::Environment for FuzzwareEnvironment {
 
     fn restore(&mut self, _snapshot: &Box<dyn std::any::Any>) {}
 
-    fn as_any(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-
     fn symbolize_addr(
         &mut self,
         _cpu: &mut icicle_vm::cpu::Cpu,
@@ -377,7 +351,7 @@ pub unsafe extern "C" fn emu_start(
 
     if ctx.print_exit_info || TRACE_PATHS {
         let path_tracer = ctx.vm.cpu.get_hook_mut(ctx.path_tracer_hook);
-        path_tracer.as_any().downcast_mut::<PathTracer>().unwrap().blocks.clear();
+        path_tracer.data_mut::<PathTracer>().unwrap().blocks.clear();
     }
 
     if ctx.kill_on_next_run {
@@ -468,7 +442,7 @@ fn save_exit_info(ctx: &mut Context, exit: VmExit) {
 fn save_trace(ctx: &mut Context, path: &std::path::Path, debug: bool) {
     let mut output = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
     let path_tracer = ctx.vm.cpu.get_hook_mut(ctx.path_tracer_hook);
-    let blocks = path_tracer.as_any().downcast_ref::<PathTracer>().unwrap().blocks.clone();
+    let blocks = path_tracer.data_mut::<PathTracer>().unwrap().blocks.clone();
     for (addr, icount, fuzz_offset) in &blocks {
         writeln!(output, "{addr:#x},{icount},{fuzz_offset}").unwrap();
     }
@@ -698,14 +672,14 @@ pub unsafe extern "C" fn mem_regions(
                     [(start - page.addr) as usize];
                 out.push(uc_mem_region {
                     begin: start,
-                    end: end - 1, // Unicorn API expects inclusive ranges
+                    end,
                     perms: icicle_perms_to_uc_perms(icicle_perm),
                 });
             }
             icicle_vm::cpu::mem::MemoryMapping::Unallocated(region) => {
                 out.push(uc_mem_region {
                     begin: start,
-                    end: end - 1,
+                    end,
                     perms: icicle_perms_to_uc_perms(region.perm),
                 });
             }
@@ -739,12 +713,12 @@ pub unsafe extern "C" fn block_hook_add(
     let hook = UnicornHook { vtable, callback, userdata };
 
     if begin == NVIC_EXCEPT_MAGIC_RET_MASK {
-        let env = ctx.vm.env.as_any().downcast_mut::<FuzzwareEnvironment>().unwrap();
+        let env = ctx.vm.env.as_mut_any().downcast_mut::<FuzzwareEnvironment>().unwrap();
         env.interrupt_ret_hook = Some(hook);
         *hh = ctx.register_hook(HookKind::InterruptRetHook);
     }
     else {
-        let hook_id = ctx.vm.cpu.add_hook(Box::new(hook));
+        let hook_id = ctx.vm.cpu.add_hook(hook);
         let injector_id =
             icicle_vm::injector::register_block_hook_injector(&mut ctx.vm, begin, end, hook_id);
         *hh = ctx.register_hook(HookKind::Block { injector_id });
@@ -794,7 +768,7 @@ pub unsafe extern "C" fn int_hook_add(
     let vtable = (*ctx).vtable.as_mut().unwrap().as_mut() as *mut uc_engine;
     let hook = UnicornHook { vtable, callback, userdata };
 
-    let env = ctx.vm.env.as_any().downcast_mut::<FuzzwareEnvironment>().unwrap();
+    let env = ctx.vm.env.as_mut_any().downcast_mut::<FuzzwareEnvironment>().unwrap();
     env.syscall_hook = Some(hook);
     *hh = ctx.register_hook(HookKind::SyscallHook);
 
@@ -812,7 +786,7 @@ pub unsafe extern "C" fn hook_del(ctx: *mut c_void, hh: uc_hook) -> uc_err {
     match hook {
         HookKind::Mem { read, read_after, write, fault } => {
             if let Some(_fault) = fault {
-                let _env = ctx.vm.env.as_any().downcast_mut::<FuzzwareEnvironment>().unwrap();
+                let _env = ctx.vm.env.as_mut_any().downcast_mut::<FuzzwareEnvironment>().unwrap();
                 // @todo: remove hook.
             }
             if let Some(_hook) = read {
@@ -829,11 +803,11 @@ pub unsafe extern "C" fn hook_del(ctx: *mut c_void, hh: uc_hook) -> uc_err {
             // @todo
         }
         HookKind::InterruptRetHook => {
-            let env = ctx.vm.env.as_any().downcast_mut::<FuzzwareEnvironment>().unwrap();
+            let env = ctx.vm.env.as_mut_any().downcast_mut::<FuzzwareEnvironment>().unwrap();
             env.interrupt_ret_hook = None;
         }
         HookKind::SyscallHook => {
-            let env = ctx.vm.env.as_any().downcast_mut::<FuzzwareEnvironment>().unwrap();
+            let env = ctx.vm.env.as_mut_any().downcast_mut::<FuzzwareEnvironment>().unwrap();
             env.syscall_hook = None;
         }
     }
@@ -843,7 +817,7 @@ pub unsafe extern "C" fn hook_del(ctx: *mut c_void, hh: uc_hook) -> uc_err {
 pub unsafe extern "C" fn context_alloc(ctx: *mut c_void, context: *mut *mut uc_context) -> uc_err {
     debug!("icicle_unicorn_api::context_alloc");
     let ctx = &mut *ctx.cast::<Context>();
-    let ptr = Box::leak(Box::new(ctx.vm.cpu.snapshot()));
+    let ptr = Box::leak(ctx.vm.cpu.snapshot());
     *context = (ptr as *mut CpuSnapshot).cast::<uc_context>();
     UC_ERR_OK
 }
@@ -851,7 +825,7 @@ pub unsafe extern "C" fn context_alloc(ctx: *mut c_void, context: *mut *mut uc_c
 pub unsafe extern "C" fn context_save(ctx: *mut c_void, context: *mut uc_context) -> uc_err {
     debug!("icicle_unicorn_api::context_save");
     let ctx = &mut *ctx.cast::<Context>();
-    *context.cast::<CpuSnapshot>() = ctx.vm.cpu.snapshot();
+    *context.cast::<CpuSnapshot>() = *ctx.vm.cpu.snapshot();
     UC_ERR_OK
 }
 
@@ -916,10 +890,10 @@ pub unsafe extern "C" fn fuzzer_reset_cov(ctx: *mut c_void, do_clear: c_int) -> 
         std::slice::from_raw_parts_mut(ptr, size as usize).fill(0);
     }
     if let Some(prev_pc) = ctx.prev_pc_var {
-        ctx.vm.cpu.write_reg(prev_pc, 0_u16);
+        ctx.vm.cpu.write_var(prev_pc, 0_u16);
     }
     if let Some(context) = ctx.context_var {
-        ctx.vm.cpu.write_reg(context, 0_u16);
+        ctx.vm.cpu.write_var(context, 0_u16);
     }
 
     UC_ERR_OK
