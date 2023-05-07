@@ -5,7 +5,7 @@ from collections import defaultdict
 
 import archinfo
 import ipdb
-import unicorn
+import icicle
 
 from . import util
 
@@ -21,9 +21,9 @@ class SparklyRegs():
 
     def __getattribute__(self, regname):
         myuc = object.__getattribute__(self, '_uc')
-        for x in dir(unicorn.arm_const):
+        for x in dir(icicle):
             if x.endswith('REG_' + regname.upper()):
-                return myuc.reg_read(getattr(unicorn.arm_const, x))
+                return myuc.reg_read(getattr(icicle, x))
         return object.__getattribute__(self, regname)
 
     def get_all(self):
@@ -45,9 +45,9 @@ class SparklyRegs():
         if regname == "_uc":
             object.__setattr__(self, regname, val)
         myuc = object.__getattribute__(self, '_uc')
-        for x in dir(unicorn.arm_const):
+        for x in dir(icicle):
             if x.endswith('_' + regname.upper()):
-                return myuc.reg_write(getattr(unicorn.arm_const, x), val)
+                return myuc.reg_write(getattr(icicle, x), val)
         return object.__getattribute__(self, regname)
 
     def __repr__(self):
@@ -113,7 +113,7 @@ class SparklyStack():
 
     def __getitem__(self, key):
         myuc = object.__getattribute__(self, '_uc')
-        sp = myuc.reg_read(unicorn.arm_const.UC_ARM_REG_SP)
+        sp = myuc.reg_read(icicle.UC_ARM_REG_SP)
         if isinstance(key, slice):
             return myuc.mem_read(sp + key.start, (key.stop-key.start))
         return myuc.mem_read(sp + key, 4)
@@ -213,7 +213,7 @@ def add_sparkles(uc, args):
             except ValueError:
                 bp_addr = util.parse_address_value(uc.symbols, bp)
             breakpoints.append(bp_addr & ~1)
-        uc.hook_add(unicorn.UC_HOOK_BLOCK_UNCONDITIONAL, breakpoint_handler)
+        uc.hook_add(icicle.UC_HOOK_BLOCK_UNCONDITIONAL, breakpoint_handler)
     uc.arch = archinfo.ArchARMCortexM()
     # uc.arch = None
     return uc

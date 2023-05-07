@@ -10,7 +10,7 @@ from socket import AF_INET, SO_REUSEADDR, SOCK_STREAM, SOL_SOCKET
 from threading import Event, Thread
 from time import sleep
 import ast
-from unicorn.arm_const import (UC_ARM_REG_CPSR, UC_ARM_REG_LR, UC_ARM_REG_PC,
+from icicle import (UC_ARM_REG_CPSR, UC_ARM_REG_LR, UC_ARM_REG_PC,
                                UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2,
                                UC_ARM_REG_R3, UC_ARM_REG_R4, UC_ARM_REG_R5,
                                UC_ARM_REG_R6, UC_ARM_REG_R7, UC_ARM_REG_R8,

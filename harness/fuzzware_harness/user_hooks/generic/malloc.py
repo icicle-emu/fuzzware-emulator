@@ -1,5 +1,5 @@
-from unicorn.arm_const import UC_ARM_REG_R0, UC_ARM_REG_R1
-from unicorn.unicorn_const import UC_PROT_NONE, UC_PROT_READ, UC_PROT_WRITE
+from icicle import UC_ARM_REG_R0, UC_ARM_REG_R1
+from icicle import UC_PROT_NONE, UC_PROT_READ, UC_PROT_WRITE
 
 from ...util import crash
 

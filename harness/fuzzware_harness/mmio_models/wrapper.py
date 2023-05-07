@@ -2,7 +2,7 @@ import importlib
 import traceback
 import logging
 
-from unicorn.arm_const import UC_ARM_REG_PC
+from icicle import UC_ARM_REG_PC
 
 from ..exit import do_exit
 from ..globs import MMIO_HOOK_PC_ALL_ACCESS_SITES

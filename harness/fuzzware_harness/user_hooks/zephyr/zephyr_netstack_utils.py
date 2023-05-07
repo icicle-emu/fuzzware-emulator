@@ -1,7 +1,7 @@
 import os
 from binascii import hexlify
 
-from unicorn import UcError
+from icicle import UcError
 
 
 def dump_net_buf_simple(uc, buf):

@@ -1,9 +1,9 @@
 import logging
-from unicorn.arm_const import (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_R4,
+from icicle import (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_R4,
             UC_ARM_REG_R5, UC_ARM_REG_R6, UC_ARM_REG_R7, UC_ARM_REG_R8, UC_ARM_REG_R9,
             UC_ARM_REG_R10, UC_ARM_REG_R11, UC_ARM_REG_R12, UC_ARM_REG_LR, UC_ARM_REG_PC,
             UC_ARM_REG_SP, UC_ARM_REG_XPSR)
-from unicorn.unicorn_const import UC_HOOK_MEM_READ, UC_HOOK_MEM_READ_AFTER
+from icicle import UC_HOOK_MEM_READ, UC_HOOK_MEM_READ_AFTER
 from ..exit import add_exit_hook
 from .trace_bbs import dump_current_bb_trace
 

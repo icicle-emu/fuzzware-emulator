@@ -333,13 +333,6 @@ def register_native_debug_hooks(uc):
     raise ValueError("unimplemented in icicle")
     assert(native_lib.add_debug_hooks(uc._uch) == 0)
 
-def load_native_lib(native_lib_path):
-    global native_lib
-
-    native_lib = _load_lib(native_lib_path)
-
-    assert  native_lib is not None
-
 def do_exit(uc, status, sig=-1):
     global native_lib
     raise ValueError("unimplemented in icicle")
@@ -349,88 +342,88 @@ def init(uc, mmio_regions, exit_at_bbls, exit_at_hit_num, do_print_exit_info, fu
     global native_lib
     global mmio_cb_wrapper
 
-    # GENERAL
-    # uc_err init(                                     uc_engine *uc, exit_hook_t p_exit_hook, int p_num_mmio_regions, uint64_t *p_mmio_starts, uint64_t *p_mmio_ends, void *p_py_default_mmio_user_data, uint32_t num_exit_at_bbls, uint64_t *exit_at_bbls, uint32_t exit_at_hit_num, int p_do_print_exit_info, uint64_t fuzz_consumption_timeout, uint64_t p_instr_limit);
-    _setup_prototype(native_lib, "init", ctypes.c_int, uc_engine,     ctypes.c_void_p,         ctypes.c_int,           ctypes.c_void_p,         ctypes.c_void_p,       ctypes.c_void_p,                   ctypes.c_uint,             ctypes.c_void_p,        ctypes.c_uint,            ctypes.c_uint,            ctypes.c_uint64,                   ctypes.c_uint64)
-    # uc_err register_cond_py_handler_hook(uc_cb_hookcode_t py_callback, uint64_t *addrs, int num_addrs)
-    _setup_prototype(native_lib, "register_cond_py_handler_hook", ctypes.c_int, uc_engine, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)
-    # uc_err remove_function_handler_hook_address(uc_engine * uc, uint64_t address);
-    _setup_prototype(native_lib, "remove_function_handler_hook_address", ctypes.c_int, uc_engine, ctypes.c_uint64)
-    # void do_exit(uc_engine *uc, int status, int sig);
-    _setup_prototype(native_lib, "do_exit", ctypes.c_int, uc_engine, ctypes.c_int, ctypes.c_int)
+    # # GENERAL
+    # # uc_err init(                                     uc_engine *uc, exit_hook_t p_exit_hook, int p_num_mmio_regions, uint64_t *p_mmio_starts, uint64_t *p_mmio_ends, void *p_py_default_mmio_user_data, uint32_t num_exit_at_bbls, uint64_t *exit_at_bbls, uint32_t exit_at_hit_num, int p_do_print_exit_info, uint64_t fuzz_consumption_timeout, uint64_t p_instr_limit);
+    # _setup_prototype(native_lib, "init", ctypes.c_int, uc_engine,     ctypes.c_void_p,         ctypes.c_int,           ctypes.c_void_p,         ctypes.c_void_p,       ctypes.c_void_p,                   ctypes.c_uint,             ctypes.c_void_p,        ctypes.c_uint,            ctypes.c_uint,            ctypes.c_uint64,                   ctypes.c_uint64)
+    # # uc_err register_cond_py_handler_hook(uc_cb_hookcode_t py_callback, uint64_t *addrs, int num_addrs)
+    # _setup_prototype(native_lib, "register_cond_py_handler_hook", ctypes.c_int, uc_engine, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)
+    # # uc_err remove_function_handler_hook_address(uc_engine * uc, uint64_t address);
+    # _setup_prototype(native_lib, "remove_function_handler_hook_address", ctypes.c_int, uc_engine, ctypes.c_uint64)
+    # # void do_exit(uc_engine *uc, int status, int sig);
+    # _setup_prototype(native_lib, "do_exit", ctypes.c_int, uc_engine, ctypes.c_int, ctypes.c_int)
 
-    # FUZZING
-    _setup_prototype(native_lib, "load_fuzz", ctypes.c_int, ctypes.c_char_p)
-    # uint32_t fuzz_remaining();
-    _setup_prototype(native_lib, "fuzz_remaining", ctypes.c_int)
-    # uint64_t num_consumed_fuzz();
-    _setup_prototype(native_lib, "fuzz_consumed", ctypes.c_uint32)
+    # # FUZZING
+    # _setup_prototype(native_lib, "load_fuzz", ctypes.c_int, ctypes.c_char_p)
+    # # uint32_t fuzz_remaining();
+    # _setup_prototype(native_lib, "fuzz_remaining", ctypes.c_int)
+    # # uint64_t num_consumed_fuzz();
+    # _setup_prototype(native_lib, "fuzz_consumed", ctypes.c_uint32)
 
-    # uint32_t get_latest_mmio_fuzz_access_size();
-    _setup_prototype(native_lib, "get_latest_mmio_fuzz_access_size", ctypes.c_uint32)
+    # # uint32_t get_latest_mmio_fuzz_access_size();
+    # _setup_prototype(native_lib, "get_latest_mmio_fuzz_access_size", ctypes.c_uint32)
 
-    # uint32_t get_latest_mmio_fuzz_access_index();
-    _setup_prototype(native_lib, "get_latest_mmio_fuzz_access_index", ctypes.c_uint32)
+    # # uint32_t get_latest_mmio_fuzz_access_index();
+    # _setup_prototype(native_lib, "get_latest_mmio_fuzz_access_index", ctypes.c_uint32)
 
-    # char *get_fuzz_ptr(uc_engine *uc, uint32_t size);
-    _setup_prototype(native_lib, "get_fuzz_ptr", ctypes.c_void_p, uc_engine, ctypes.c_uint32)
+    # # char *get_fuzz_ptr(uc_engine *uc, uint32_t size);
+    # _setup_prototype(native_lib, "get_fuzz_ptr", ctypes.c_void_p, uc_engine, ctypes.c_uint32)
 
-    # uc_err add_mmio_region(uc_engine *uc, uint64_t begin, uint64_t end)
-    _setup_prototype(native_lib, "add_mmio_region", ctypes.c_int, uc_engine, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_void_p)
-    # extern uc_err register_py_handled_mmio_ranges(uc_engine *uc, uc_cb_hookmem_t py_callback, uint64_t *starts, uint64_t *ends, int num_ranges);
-    _setup_prototype(native_lib, "register_py_handled_mmio_ranges", ctypes.c_int, uc_engine, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)
-    # extern uc_err set_ignored_mmio_addresses(uint64_t *addresses, uint32_t *pcs, int num_addresses);
-    _setup_prototype(native_lib, "set_ignored_mmio_addresses", ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)
-    # extern uc_err register_linear_mmio_models(uc_engine *uc, uint64_t *starts, uint64_t *ends, uint32_t *pcs, uint32_t *init_vals, uint32_t *steps, int num_ranges);
-    _setup_prototype(native_lib, "register_linear_mmio_models", ctypes.c_int, uc_engine, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)
-    # extern uc_err register_constant_mmio_models(uc_engine *uc, uint64_t *starts, uint64_t *ends, uint32_t *pcs, uint32_t *vals, int num_ranges)
-    _setup_prototype(native_lib, "register_constant_mmio_models", ctypes.c_int, uc_engine, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)
-    # extern uc_err register_bitextract_mmio_models(uc_engine *uc, uint64_t *starts, uint64_t *ends, uint32_t *pcs, uint8_t *byte_sizes, uint8_t *left_shifts, uint32_t * masks, int num_ranges);
-    _setup_prototype(native_lib, "register_bitextract_mmio_models", ctypes.c_int, uc_engine, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)
-    # extern uc_err register_value_set_mmio_models(uc_engine *uc, uint64_t *starts, uint64_t *ends, uint32_t *pcs, uint32_t *value_nums, uint32_t **value_lists, int num_ranges);
-    _setup_prototype(native_lib, "register_value_set_mmio_models", ctypes.c_int, uc_engine, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)
+    # # uc_err add_mmio_region(uc_engine *uc, uint64_t begin, uint64_t end)
+    # _setup_prototype(native_lib, "add_mmio_region", ctypes.c_int, uc_engine, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_void_p)
+    # # extern uc_err register_py_handled_mmio_ranges(uc_engine *uc, uc_cb_hookmem_t py_callback, uint64_t *starts, uint64_t *ends, int num_ranges);
+    # _setup_prototype(native_lib, "register_py_handled_mmio_ranges", ctypes.c_int, uc_engine, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)
+    # # extern uc_err set_ignored_mmio_addresses(uint64_t *addresses, uint32_t *pcs, int num_addresses);
+    # _setup_prototype(native_lib, "set_ignored_mmio_addresses", ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)
+    # # extern uc_err register_linear_mmio_models(uc_engine *uc, uint64_t *starts, uint64_t *ends, uint32_t *pcs, uint32_t *init_vals, uint32_t *steps, int num_ranges);
+    # _setup_prototype(native_lib, "register_linear_mmio_models", ctypes.c_int, uc_engine, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)
+    # # extern uc_err register_constant_mmio_models(uc_engine *uc, uint64_t *starts, uint64_t *ends, uint32_t *pcs, uint32_t *vals, int num_ranges)
+    # _setup_prototype(native_lib, "register_constant_mmio_models", ctypes.c_int, uc_engine, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)
+    # # extern uc_err register_bitextract_mmio_models(uc_engine *uc, uint64_t *starts, uint64_t *ends, uint32_t *pcs, uint8_t *byte_sizes, uint8_t *left_shifts, uint32_t * masks, int num_ranges);
+    # _setup_prototype(native_lib, "register_bitextract_mmio_models", ctypes.c_int, uc_engine, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)
+    # # extern uc_err register_value_set_mmio_models(uc_engine *uc, uint64_t *starts, uint64_t *ends, uint32_t *pcs, uint32_t *value_nums, uint32_t **value_lists, int num_ranges);
+    # _setup_prototype(native_lib, "register_value_set_mmio_models", ctypes.c_int, uc_engine, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)
 
-    # NVIC
-    # extern uc_err init_nvic(uc_engine *uc, uint32_t vtor, uint32_t num_irq, uint32_t interrupt_limit, uint32_t num_disabled_interrupts, uint32_t *disabled_interrupts);
-    _setup_prototype(native_lib, "init_nvic", ctypes.c_int, uc_engine, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p)
-    # extern void nvic_set_pending(int num)
-    _setup_prototype(native_lib, "nvic_set_pending", ctypes.c_int, ctypes.c_int)
+    # # NVIC
+    # # extern uc_err init_nvic(uc_engine *uc, uint32_t vtor, uint32_t num_irq, uint32_t interrupt_limit, uint32_t num_disabled_interrupts, uint32_t *disabled_interrupts);
+    # _setup_prototype(native_lib, "init_nvic", ctypes.c_int, uc_engine, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p)
+    # # extern void nvic_set_pending(int num)
+    # _setup_prototype(native_lib, "nvic_set_pending", ctypes.c_int, ctypes.c_int)
 
-    # TRACING
-    # uc_err init_tracing(uc_engine *uc, char *bbl_set_trace_path, char *mmio_set_trace_path, size_t num_mmio_ranges, uint64_t *mmio_starts, uint64_t *mmio_ends);
-    _setup_prototype(native_lib, "init_tracing", ctypes.c_int, uc_engine, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_void_p)
+    # # TRACING
+    # # uc_err init_tracing(uc_engine *uc, char *bbl_set_trace_path, char *mmio_set_trace_path, size_t num_mmio_ranges, uint64_t *mmio_starts, uint64_t *mmio_ends);
+    # _setup_prototype(native_lib, "init_tracing", ctypes.c_int, uc_engine, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_void_p)
 
-    # DEBUG
-    # uc_err add_debug_hooks(uc_engine *uc)
-    _setup_prototype(native_lib, "add_debug_hooks", ctypes.c_int, uc_engine)
+    # # DEBUG
+    # # uc_err add_debug_hooks(uc_engine *uc)
+    # _setup_prototype(native_lib, "add_debug_hooks", ctypes.c_int, uc_engine)
 
-    # TIMER
-    # extern uint64_t get_global_ticker();
-    _setup_prototype(native_lib, 'get_global_ticker', ctypes.c_int64)
-    # extern uc_err init_timer_hook(uc_engine *uc, uint32_t global_timer_scale);
-    _setup_prototype(native_lib, "init_timer_hook", ctypes.c_int, uc_engine, ctypes.c_uint)
-    # extern uint32_t add_timer(int64_t reload_val, void *trigger_callback, uint32_t isr_num);
-    _setup_prototype(native_lib, "add_timer", ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32)
-    # extern uc_err rem_timer(uc_engine *uc, uint32_t id);
-    _setup_prototype(native_lib, "rem_timer", ctypes.c_int, uc_engine, ctypes.c_uint32)
-    # extern uc_err reload_timer(uint32_t id);
-    _setup_prototype(native_lib, "reload_timer", ctypes.c_int, uc_engine, ctypes.c_uint32)
-    # extern uc_err start_timer(uc_engine *uc, uint32_t id);
-    _setup_prototype(native_lib, "start_timer", ctypes.c_int, uc_engine, ctypes.c_uint32)
-    # extern uc_err stop_timer(uc_engine *uc, uint32_t id);
-    _setup_prototype(native_lib, "stop_timer", ctypes.c_int, uc_engine, ctypes.c_uint32)
+    # # TIMER
+    # # extern uint64_t get_global_ticker();
+    # _setup_prototype(native_lib, 'get_global_ticker', ctypes.c_int64)
+    # # extern uc_err init_timer_hook(uc_engine *uc, uint32_t global_timer_scale);
+    # _setup_prototype(native_lib, "init_timer_hook", ctypes.c_int, uc_engine, ctypes.c_uint)
+    # # extern uint32_t add_timer(int64_t reload_val, void *trigger_callback, uint32_t isr_num);
+    # _setup_prototype(native_lib, "add_timer", ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32)
+    # # extern uc_err rem_timer(uc_engine *uc, uint32_t id);
+    # _setup_prototype(native_lib, "rem_timer", ctypes.c_int, uc_engine, ctypes.c_uint32)
+    # # extern uc_err reload_timer(uint32_t id);
+    # _setup_prototype(native_lib, "reload_timer", ctypes.c_int, uc_engine, ctypes.c_uint32)
+    # # extern uc_err start_timer(uc_engine *uc, uint32_t id);
+    # _setup_prototype(native_lib, "start_timer", ctypes.c_int, uc_engine, ctypes.c_uint32)
+    # # extern uc_err stop_timer(uc_engine *uc, uint32_t id);
+    # _setup_prototype(native_lib, "stop_timer", ctypes.c_int, uc_engine, ctypes.c_uint32)
 
-    # SYSTICK
-    # extern uc_err init_systick(uc_engine *uc, uint32_t reload_val);
-    _setup_prototype(native_lib, "init_systick", ctypes.c_int, uc_engine, ctypes.c_uint32)
+    # # SYSTICK
+    # # extern uc_err init_systick(uc_engine *uc, uint32_t reload_val);
+    # _setup_prototype(native_lib, "init_systick", ctypes.c_int, uc_engine, ctypes.c_uint32)
 
-    # INTERRUPT TRIGGERS
-    # uc_hook add_interrupt_trigger(uc_engine *uc, uint64_t addr, uint32_t irq, uint32_t num_skips, uint32_t num_pends, uint32_t fuzz_mode, uint32_t trigger_mode, uint64_t every_nth_tick);
-    _setup_prototype(native_lib, "add_interrupt_trigger", ctypes.c_int, uc_engine, ctypes.c_uint64, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint64)
+    # # INTERRUPT TRIGGERS
+    # # uc_hook add_interrupt_trigger(uc_engine *uc, uint64_t addr, uint32_t irq, uint32_t num_skips, uint32_t num_pends, uint32_t fuzz_mode, uint32_t trigger_mode, uint64_t every_nth_tick);
+    # _setup_prototype(native_lib, "add_interrupt_trigger", ctypes.c_int, uc_engine, ctypes.c_uint64, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint64)
 
-    # Starting emulation
-    # uc_err emulate(uc_engine *uc, char *input_path, char *prefix_input_path);
-    _setup_prototype(native_lib, "emulate", ctypes.c_int, uc_engine, ctypes.c_char_p, ctypes.c_char_p)
+    # # Starting emulation
+    # # uc_err emulate(uc_engine *uc, char *input_path, char *prefix_input_path);
+    # _setup_prototype(native_lib, "emulate", ctypes.c_int, uc_engine, ctypes.c_char_p, ctypes.c_char_p)
 
     # mmio_region_starts, mmio_region_ends = zip(*mmio_regions)
     # mmio_region_starts_arr = (ctypes.c_int64 * len(mmio_region_starts))(*mmio_region_starts)

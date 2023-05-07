@@ -1,6 +1,6 @@
 import logging
-from unicorn import UC_HOOK_MEM_READ_AFTER, UC_HOOK_MEM_WRITE, UC_MEM_WRITE
-from unicorn.arm_const import UC_ARM_REG_LR, UC_ARM_REG_PC
+from icicle import UC_HOOK_MEM_READ_AFTER, UC_HOOK_MEM_WRITE, UC_MEM_WRITE
+from icicle import UC_ARM_REG_LR, UC_ARM_REG_PC
 
 from .. import native
 from ..exit import add_exit_hook

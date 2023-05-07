@@ -1,7 +1,7 @@
 import os
 import signal
 
-from unicorn.arm_const import UC_ARM_REG_R0, UC_ARM_REG_PC
+from icicle import UC_ARM_REG_R0, UC_ARM_REG_PC
 
 from ...exit import do_exit
 

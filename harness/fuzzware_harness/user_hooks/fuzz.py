@@ -1,4 +1,4 @@
-from unicorn.arm_const import UC_ARM_REG_R0
+from icicle import UC_ARM_REG_R0
 from .. import native
 
 def get_fuzz(uc, size):

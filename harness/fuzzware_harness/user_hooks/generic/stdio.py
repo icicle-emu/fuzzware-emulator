@@ -1,7 +1,7 @@
 import sys
 from string import digits
 
-from unicorn.arm_const import (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2,
+from icicle import (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2,
                                UC_ARM_REG_R3)
 
 from ..fuzz import get_fuzz

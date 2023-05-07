@@ -1,5 +1,5 @@
 import logging
-from unicorn.arm_const import (UC_ARM_REG_PC, UC_ARM_REG_R0, UC_ARM_REG_R1,
+from icicle import (UC_ARM_REG_PC, UC_ARM_REG_R0, UC_ARM_REG_R1,
                                UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_R4,
                                UC_ARM_REG_R5, UC_ARM_REG_R7, UC_ARM_REG_SP)
 

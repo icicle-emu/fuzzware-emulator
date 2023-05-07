@@ -4,9 +4,7 @@ import os
 import sys
 import logging
 
-from icicle import Uc
-from unicorn import (UC_ARCH_ARM, UC_MODE_MCLASS, UC_MODE_THUMB)
-from unicorn.arm_const import UC_ARM_REG_PC, UC_ARM_REG_SP
+from icicle import (Uc, UC_ARM_REG_PC, UC_ARM_REG_SP)
 
 from . import globs, interrupt_triggers, native, timer, user_hooks
 from .gdbserver import GDBServer
@@ -31,13 +29,6 @@ def configure_unicorn(args):
     logger.info(f"Loading configuration in {str(args.config)}")
     config = load_config_deep(args.config)
 
-    native_lib_path = os.path.dirname(os.path.realpath(__file__))+'/native/native_hooks.so'
-    if not os.path.exists(native_lib_path):
-        logger.error(f"Native library {str(native_lib_path)} does not exist! Exiting...")
-        sys.exit(1)
-    else:
-        native.load_native_lib(native_lib_path)
-
     limits = config.get("limits")
     if limits:
         if 'translation_blocks' in limits:
@@ -55,7 +46,7 @@ def configure_unicorn(args):
         sys.exit(1)
 
     # Create the unicorn
-    uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS, False)
+    uc = Uc(0, 0, False)
 
     uc.symbols, uc.syms_by_addr = parse_symbols(config)
 

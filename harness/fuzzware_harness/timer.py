@@ -2,7 +2,7 @@ import importlib
 import sys
 import logging
 
-from unicorn.arm_const import UC_ARM_REG_PC
+from icicle import UC_ARM_REG_PC
 
 from . import globs, native
 from .exit import do_exit

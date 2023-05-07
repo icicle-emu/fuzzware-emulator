@@ -1,4 +1,4 @@
-from unicorn import UcError
+from icicle import UcError
 
 
 def dump_timeout(uc, timeout):

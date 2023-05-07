@@ -823,5 +823,37 @@ fn icicle(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_latest_mmio_fuzz_access_size, m)?)?;
     m.add_function(wrap_pyfunction!(fuzz_remaining, m)?)?;
     m.add_function(wrap_pyfunction!(fuzz_consumed, m)?)?;
+
+    m.add("UC_ARM_REG_CPSR", fuzzware::uc_arm_reg::UC_ARM_REG_CPSR)?;
+    m.add("UC_ARM_REG_LR", fuzzware::uc_arm_reg::UC_ARM_REG_LR)?;
+    m.add("UC_ARM_REG_PC", fuzzware::uc_arm_reg::UC_ARM_REG_PC)?;
+    m.add("UC_ARM_REG_R0", fuzzware::uc_arm_reg::UC_ARM_REG_R0)?;
+    m.add("UC_ARM_REG_R1", fuzzware::uc_arm_reg::UC_ARM_REG_R1)?;
+    m.add("UC_ARM_REG_R2", fuzzware::uc_arm_reg::UC_ARM_REG_R2)?;
+    m.add("UC_ARM_REG_R3", fuzzware::uc_arm_reg::UC_ARM_REG_R3)?;
+    m.add("UC_ARM_REG_R4", fuzzware::uc_arm_reg::UC_ARM_REG_R4)?;
+    m.add("UC_ARM_REG_R5", fuzzware::uc_arm_reg::UC_ARM_REG_R5)?;
+    m.add("UC_ARM_REG_R6", fuzzware::uc_arm_reg::UC_ARM_REG_R6)?;
+    m.add("UC_ARM_REG_R7", fuzzware::uc_arm_reg::UC_ARM_REG_R7)?;
+    m.add("UC_ARM_REG_R8", fuzzware::uc_arm_reg::UC_ARM_REG_R8)?;
+    m.add("UC_ARM_REG_R9", fuzzware::uc_arm_reg::UC_ARM_REG_R9)?;
+    m.add("UC_ARM_REG_R10", fuzzware::uc_arm_reg::UC_ARM_REG_R10)?;
+    m.add("UC_ARM_REG_R11", fuzzware::uc_arm_reg::UC_ARM_REG_R11)?;
+    m.add("UC_ARM_REG_R12", fuzzware::uc_arm_reg::UC_ARM_REG_R12)?;
+    m.add("UC_ARM_REG_SP", fuzzware::uc_arm_reg::UC_ARM_REG_SP)?;
+    m.add("UC_ARM_REG_XPSR", fuzzware::uc_arm_reg::UC_ARM_REG_XPSR)?;
+
+    m.add("UC_HOOK_MEM_READ_AFTER", fuzzware::uc_hook_type::UC_HOOK_MEM_READ_AFTER)?;
+    m.add("UC_HOOK_MEM_WRITE", fuzzware::uc_hook_type::UC_HOOK_MEM_WRITE)?;
+    m.add("UC_HOOK_MEM_READ", fuzzware::uc_hook_type::UC_HOOK_MEM_READ)?;
+    m.add("UC_HOOK_BLOCK_UNCONDITIONAL", fuzzware::uc_hook_type::UC_HOOK_BLOCK_UNCONDITIONAL)?;
+
+    m.add("UC_MEM_WRITE", fuzzware::uc_mem_type::UC_MEM_WRITE)?;
+    m.add("UC_MEM_READ", fuzzware::uc_mem_type::UC_MEM_READ)?;
+
+    m.add("UC_PROT_NONE", fuzzware::uc_prot::UC_PROT_NONE)?;
+    m.add("UC_PROT_READ", fuzzware::uc_prot::UC_PROT_READ)?;
+    m.add("UC_PROT_WRITE", fuzzware::uc_prot::UC_PROT_WRITE)?;
+
     Ok(())
 }

@@ -5,7 +5,7 @@ import struct
 import sys
 import logging
 
-from unicorn import UC_HOOK_BLOCK_UNCONDITIONAL
+from icicle import UC_HOOK_BLOCK_UNCONDITIONAL
 
 from .. import globs
 from ..exit import do_exit
