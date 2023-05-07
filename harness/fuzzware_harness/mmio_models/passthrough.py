@@ -10,7 +10,7 @@ def register_passthrough_handlers(uc, addrs, pcs, vals):
 
         ensure_rw_mapped(uc, address, address)
 
-    set_ignored_mmio_addresses(addrs, pcs)
+    set_ignored_mmio_addresses(uc, addrs, pcs)
 
 def parse_passthrough_handlers(symbols, declarations):
     addrs = []

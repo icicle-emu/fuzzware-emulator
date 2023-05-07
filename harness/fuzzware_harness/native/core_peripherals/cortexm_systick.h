@@ -1,7 +1,7 @@
 #ifndef CORTEXM_SYSTICK_H
 #define CORTEXM_SYSTICK_H
 
-#include "unicorn/unicorn.h"
+#include "../unicorn.h"
 #include "cortexm_exception_nums.h"
 #include "cmsis/core_cm3.h"
 #include "cortexm_nvic.h"
@@ -29,7 +29,7 @@
 #define SYSTICK_TICKS_10_MS 500
 
 struct CortexmSysTick {
-    /* 
+    /*
      * We treat SysTick as a timer. From that abstraction we will also query
      * data such as reload values.
      */

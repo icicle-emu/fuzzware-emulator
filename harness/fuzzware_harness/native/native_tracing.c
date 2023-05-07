@@ -1,4 +1,34 @@
+#include <string.h>
+
 #include "native_tracing.h"
+#include "khash.h"
+#include "unicorn.h"
+
+
+KHASH_SET_INIT_INT64(64);
+KHASH_SET_INIT_INT(32);
+
+/*
+ * To support snapshotting, keep one base set around as well as
+ * one scratch set. We store all contexts already collected upon
+ * taking a snapshot in the base sets, and add to the scratch set
+ * when running from a snapshot. Restoring the snapshot then means
+ * only wiping the scratch set.
+ *
+ * Note that nested snapshotting (which we are currently not using)
+ * is not supported by this.
+ */
+struct TraceState {
+    uint64_t bb_hash_base;
+    uint64_t bb_hash;
+    khash_t(32) *kh_basic_block_set;
+    khash_t(64) *kh_mmio_access_context_set_writes;
+    khash_t(64) *kh_mmio_access_context_set_reads;
+    khash_t(32) *kh_scratch_basic_block_set;
+    khash_t(64) *kh_scratch_mmio_access_context_set_writes;
+    khash_t(64) *kh_scratch_mmio_access_context_set_reads;
+};
+
 
 // 0. Constants
 #define DEFAULT_INITIAL_MMIO_ACCESS_CONTEXT_TRACE_SET_CAPACITY 0x10000
@@ -47,7 +77,7 @@ void hook_mem_trace_mmio_access(uc_engine *uc, uc_mem_type type,
     uint32_t pc;
     int kh_res;
     uint64_t context;
-    uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+    uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
     context = ENCODE_MMIO_ACCESS_CONTEXT(pc, addr);
 
     if(type == UC_MEM_WRITE) {
@@ -188,7 +218,7 @@ uc_err init_tracing(uc_engine *uc, char *p_bbl_set_trace_path, char *p_bbl_hash_
             trace_state.kh_scratch_basic_block_set = kh_init(32);
 
             // Tracing basic blocks is done via a single block hook
-            uc_hook_add(uc, &tmp_hook, UC_HOOK_BLOCK_UNCONDITIONAL, hook_block_trace_set, NULL, 1, 0);
+            uc->block_hook_add(uc->ctx, &tmp_hook, UC_HOOK_BLOCK_UNCONDITIONAL, hook_block_trace_set, NULL, 1, 0);
         }
 
         if(p_bbl_hash_path) {
@@ -197,7 +227,7 @@ uc_err init_tracing(uc_engine *uc, char *p_bbl_set_trace_path, char *p_bbl_hash_
             printf("logging basic block hash to %s\n", bbl_hash_path);
 
             // Tracing basic blocks is done via a single block hook
-            uc_hook_add(uc, &tmp_hook, UC_HOOK_BLOCK_UNCONDITIONAL, hook_block_trace_hash_bbs, NULL, 1, 0);
+            uc->block_hook_add(uc->ctx, &tmp_hook, UC_HOOK_BLOCK_UNCONDITIONAL, hook_block_trace_hash_bbs, NULL, 1, 0);
         }
 
         if(p_mmio_set_trace_path) {
@@ -211,7 +241,7 @@ uc_err init_tracing(uc_engine *uc, char *p_bbl_set_trace_path, char *p_bbl_hash_
             // For tracing MMIO, we need to register hooks for all MMIO regions
             for (int i = 0; i < num_mmio_ranges; ++i) {
                 // We do not currently need writes for our purposes, otherwise, this would require | UC_HOOK_MEM_WRITE
-                uc_hook_add(uc, &tmp_hook, UC_HOOK_MEM_READ_AFTER, hook_mem_trace_mmio_access, NULL, mmio_starts[i], mmio_ends[i]);
+                uc->mem_hook_add(uc->ctx, &tmp_hook, UC_HOOK_MEM_READ_AFTER, hook_mem_trace_mmio_access, NULL, mmio_starts[i], mmio_ends[i]);
             }
         }
 

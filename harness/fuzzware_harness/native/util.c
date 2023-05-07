@@ -1,7 +1,9 @@
 #include <inttypes.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
-#include <unicorn/unicorn.h>
+#include "unicorn.h"
 
 int get_instruction_size(uint64_t insn, bool is_thumb) {
     if(is_thumb) {
@@ -34,16 +36,16 @@ void print_state(uc_engine *uc) {
     puts("\n==== UC Reg state ====");
     for (int i = 0; i < NUM_DUMPED_REGS; ++i)
     {
-        uc_reg_read(uc, reg_ids[i], &reg);
+        uc->reg_read(uc->ctx, reg_ids[i], &reg);
         printf("%s: 0x%08x\n", reg_names[i], reg);
     }
     puts("\n==== UC Stack state ====");
     uint32_t sp;
-    uc_reg_read(uc, UC_ARM_REG_SP, &sp);
+    uc->reg_read(uc->ctx, UC_ARM_REG_SP, &sp);
     for (int i = -4; i < 16; ++i)
     {
         uint32_t val;
-        if(uc_mem_read(uc, sp+4*i, &val, 4)) {
+        if(uc->mem_read(uc->ctx, sp+4*i, &val, 4)) {
             continue;
         }
         printf("0x%08x: %08x", sp+4*i, val);
@@ -56,11 +58,11 @@ void print_state(uc_engine *uc) {
     puts("======================\n");
 
     puts("\n==== UC Other Stack state ====");
-    uc_reg_read(uc, UC_ARM_REG_OTHER_SP, &sp);
+    uc->reg_read(uc->ctx, UC_ARM_REG_OTHER_SP, &sp);
     for (int i = -4; i < 16; ++i)
     {
         uint32_t val;
-        if(uc_mem_read(uc, sp+4*i, &val, 4)) {
+        if(uc->mem_read(uc->ctx, sp+4*i, &val, 4)) {
             continue;
         }
         printf("0x%08x: %08x", sp+4*i, val);
@@ -72,4 +74,9 @@ void print_state(uc_engine *uc) {
     }
     puts("======================\n");
     fflush(stdout);
+}
+
+
+const char *uc_strerror(uc_err code) {
+    return "unknown";
 }

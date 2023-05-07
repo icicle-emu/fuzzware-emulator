@@ -1,4 +1,6 @@
 #include "cortexm_nvic.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 // We implement recalculating states lazily, but can disable that behavior
 // #define DISABLE_LAZY_RECALCS
@@ -266,7 +268,7 @@ void hook_nvic_mmio_read(uc_engine *uc, uc_mem_type type,
                 out_val <<= 1;
                 out_val |= nvic.ExceptionEnabled[base_ind + i];
             }
-            uc_mem_write(uc, addr, &out_val, size);
+            uc->mem_write(uc->ctx, addr, &out_val, size);
             break;
         case NVIC_IREG_RANGE(NVIC_ISPR): // Interrupt Set-Pending Registers
             // Both NVIC_ISPR and NVIC_ICPR reads yield pending flags.
@@ -275,14 +277,14 @@ void hook_nvic_mmio_read(uc_engine *uc, uc_mem_type type,
                 out_val <<= 1;
                 out_val |= nvic.ExceptionPending[base_ind + i];
             }
-            uc_mem_write(uc, addr, &out_val, size);
+            uc->mem_write(uc->ctx, addr, &out_val, size);
             break;
         case NVIC_IREG_RANGE(NVIC_IABR): // Interrupt Active Bit Registers+
             for(int i = size * 8 - 1; i >= 0; --i) {
                 out_val <<= 1;
                 out_val |= nvic.ExceptionActive[base_ind * 4 + i];
             }
-            uc_mem_write(uc, addr, &out_val, size);
+            uc->mem_write(uc->ctx, addr, &out_val, size);
             break;
         case NVIC_IPR_RANGE(NVIC_IPR): // Interrupt Priority Registers
             base_ind = EXCEPTION_NO_EXTERNAL_START + ((access_offset - NVIC_IPR) & 0x1ff);
@@ -291,7 +293,7 @@ void hook_nvic_mmio_read(uc_engine *uc, uc_mem_type type,
                     out_val <<= 8;
                     out_val |= nvic.ExceptionPriority[base_ind + i];
                 }
-                uc_mem_write(uc, addr, &out_val, size);
+                uc->mem_write(uc->ctx, addr, &out_val, size);
             }
             break;
         default:
@@ -555,11 +557,11 @@ void hook_sysctl_mmio_read(uc_engine *uc, uc_mem_type type,
                       uint64_t addr, int size, int64_t value, void *user_data) {
     #ifdef DEBUG_NVIC
     value = 0;
-    uc_mem_read(uc, addr, &value, size);
+    uc->mem_read(uc->ctx, addr, &value, size);
     printf("[NVIC] hook_sysctl_mmio_read: Read from %08lx, raw value: %08lx\n", addr, value);
     fflush(stdout);
     #endif
-    
+
     if(addr >= SYSTICK_BASE && addr <= SYSTICK_END) {
         hook_syst_mmio_read(uc, type, addr, size, value, user_data);
         return;
@@ -573,11 +575,11 @@ void hook_sysctl_mmio_read(uc_engine *uc, uc_mem_type type,
     switch(addr & ~3) {
         case SYSCTL_ICTR: // Interrupt Controller Type Register
             // number of supported interrupts
-            uc_mem_write(uc, addr, &intlinesnum, sizeof(intlinesnum));
+            uc->mem_write(uc->ctx, addr, &intlinesnum, sizeof(intlinesnum));
             break;
         case SYSCTL_ICSR: // Interrupt Control and State Register
             out_val = calc_icsr();
-            uc_mem_write(uc, addr, &out_val, sizeof(out_val));
+            uc->mem_write(uc->ctx, addr, &out_val, sizeof(out_val));
             break;
         case SYSCTL_VTOR: // Vector Table Offset Register
             // NOP: fall through to normal read
@@ -590,7 +592,7 @@ void hook_sysctl_mmio_read(uc_engine *uc, uc_mem_type type,
             #ifdef DEBUG_NVIC
             printf("Generated out_val for SYSCTL_AIRCR: %#010x\n", out_val); fflush(stdout);
             #endif
-            uc_mem_write(uc, addr, &out_val, sizeof(out_val));
+            uc->mem_write(uc->ctx, addr, &out_val, sizeof(out_val));
             break;
         case SYSCTL_STIR: // Software Triggered Interrupt Register
             // Ignore, write-only
@@ -610,7 +612,7 @@ void hook_sysctl_mmio_read(uc_engine *uc, uc_mem_type type,
                 out_val |= nvic.ExceptionPriority[base_ind + i];
             }
 
-            uc_mem_write(uc, addr, &out_val, size);
+            uc->mem_write(uc->ctx, addr, &out_val, size);
             break;
         default:
             break;
@@ -658,14 +660,15 @@ static void handle_aircr_write(uc_engine *uc, uint32_t value) {
         if(do_print_exit_info) {
             puts("SYSCTL_AIRCR write indicated system reset, stopping emulation");
         }
-        do_exit(uc, UC_ERR_EXCEPTION);
+        // do_exit(uc, UC_ERR_EXCEPTION);
+        do_exit(uc, UC_ERR_OK);
     }
 
     // PRIGROUP
     uint32_t new_prigroup = (value & SCB_AIRCR_PRIGROUP_Msk) >> SCB_AIRCR_PRIGROUP_Pos;
     if(new_prigroup != nvic.prigroup_shift) {
         #ifdef DEBUG_NVIC
-        printf("[NVIC] SYSCTL_AIRCR write: Setting prigroup to new value. Old value: %#04x, new value: %#04x\n", new_prigroup, nvic.prigroup_shift);
+        printf("[NVIC] SYSCTL_AIRCR write: Setting prigroup to new value. Old value: %#04x, new value: %#04x\n", nvic.prigroup_shift, new_prigroup);
         fflush(stdout);
         #endif
         set_prigroup(new_prigroup);
@@ -682,7 +685,9 @@ static void handle_aircr_write(uc_engine *uc, uint32_t value) {
 void hook_sysctl_mmio_write(uc_engine *uc, uc_mem_type type,
                       uint64_t addr, int size, int64_t value, void *user_data) {
     #ifdef DEBUG_NVIC
-    printf("[NVIC] hook_sysctl_mmio_write: Write to %08lx, value: %08lx\n", addr, value);
+    uint32_t pc = 0;
+    uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
+    printf("[NVIC] hook_sysctl_mmio_write: 0x%x Write to %08lx, value: %08lx\n", pc, addr, value);
     fflush(stdout);
     #endif
 
@@ -753,7 +758,7 @@ void hook_sysctl_mmio_write(uc_engine *uc, uc_mem_type type,
 // Armv7-M ARM B1.5.8
 void PopStack(uc_engine *uc) {
     uint32_t frameptr;
-    uc_reg_read(uc, UC_ARM_REG_SP, &frameptr);
+    uc->reg_read(uc->ctx, UC_ARM_REG_SP, &frameptr);
     uc_err err;
 
     #ifdef DEBUG_NVIC
@@ -761,7 +766,7 @@ void PopStack(uc_engine *uc) {
     print_state(uc);
     #endif
 
-    if((err = uc_mem_read(uc, frameptr, &saved_regs, FRAME_SIZE)) != UC_ERR_OK) {
+    if((err = uc->mem_read(uc->ctx, frameptr, &saved_regs, FRAME_SIZE)) != UC_ERR_OK) {
         if(do_print_exit_info) {
             printf("[NVIC] PopStack: reading saved context frame during interrupt exit failed for frameptr= 0x%08x: (%s)\n", frameptr, uc_strerror(err));
             fflush(stdout);
@@ -776,9 +781,10 @@ void PopStack(uc_engine *uc) {
     {
         saved_regs.sp += 4;
     }
+    saved_regs.xpsr_retspr &= ~(1 << 9);
 
     // Here we restore all registers in one go, including sp
-    if((err = uc_reg_write_batch(uc, &saved_reg_ids[0], (void **)(&saved_reg_ptrs[0]), NUM_SAVED_REGS)) != UC_ERR_OK){
+    if((err = uc->reg_write_batch(uc->ctx, &saved_reg_ids[0], (void **)(&saved_reg_ptrs[0]), NUM_SAVED_REGS)) != UC_ERR_OK){
         if(do_print_exit_info) {
             puts("[NVIC ERROR] PopStack: restoring registers failed\n");
             print_state(uc);
@@ -820,7 +826,7 @@ void PushStack(uc_engine *uc, bool skip_instruction) {
     uint32_t spmask = ~(1 << 2);
 
     // Read the registers which are to be pushed afterwards
-    if((err = uc_reg_read_batch(uc, &saved_reg_ids[0], (void **)(&saved_reg_ptrs[0]), NUM_SAVED_REGS)) != UC_ERR_OK) {
+    if((err = uc->reg_read_batch(uc->ctx, &saved_reg_ids[0], (void **)(&saved_reg_ptrs[0]), NUM_SAVED_REGS)) != UC_ERR_OK) {
         if(do_print_exit_info) {
             puts("[NVIC ERROR] PushStack: Failed reading registers\n");
             fflush(stdout);
@@ -833,7 +839,7 @@ void PushStack(uc_engine *uc, bool skip_instruction) {
         #ifdef DEBUG_NVIC
         uint32_t prev_pc = saved_regs.pc_retaddr;
         #endif
-        uc_mem_read(uc, saved_regs.pc_retaddr, &insn, 2);
+        uc->mem_read(uc->ctx, saved_regs.pc_retaddr, &insn, 2);
 
         saved_regs.pc_retaddr += get_instruction_size(insn, true);
         #ifdef DEBUG_NVIC
@@ -846,13 +852,16 @@ void PushStack(uc_engine *uc, bool skip_instruction) {
     frameptr = (saved_regs.sp - FRAME_SIZE) & spmask;
 
     // Save the stack pointer with additional space
-    uc_reg_write(uc, UC_ARM_REG_SP, &frameptr);
+    uc->reg_write(uc->ctx, UC_ARM_REG_SP, &frameptr);
+    #ifdef DEBUG_NVIC
+    printf("[PushStack] adjusted sp from 0x%x to 0x%x\n", saved_regs.sp, frameptr); fflush(stdout);
+    #endif
 
     // Adjust xpsr with alignment info
     saved_regs.xpsr_retspr |= (frameptralign << 9);
 
     // Push the context frame itself
-    if((err = uc_mem_write(uc, frameptr,  &saved_regs, (NUM_SAVED_REGS - 1)*sizeof(saved_regs.r0))) != UC_ERR_OK){
+    if((err = uc->mem_write(uc->ctx, frameptr,  &saved_regs, (NUM_SAVED_REGS - 1)*sizeof(saved_regs.r0))) != UC_ERR_OK){
         if(do_print_exit_info) {
             printf("[NVIC] PopStack: writing saved context frame during interrupt entry failed (INVALID WRITE, frameptr= 0x%08x)\n", frameptr);
             print_state(uc);
@@ -890,13 +899,13 @@ void ExceptionReturn(uc_engine *uc, uint32_t ret_pc) {
     #ifdef DEBUG_NVIC
     uint32_t sp_mode, other_sp, sp, lr;
     sp_mode = GET_CURR_SP_MODE_IS_PSP();
-    uc_reg_read(uc, UC_ARM_REG_OTHER_SP, &other_sp);
-    uc_reg_read(uc, UC_ARM_REG_SP, &sp);
-    uc_reg_read(uc, UC_ARM_REG_LR, &lr);
+    uc->reg_read(uc->ctx, UC_ARM_REG_OTHER_SP, &other_sp);
+    uc->reg_read(uc->ctx, UC_ARM_REG_SP, &sp);
+    uc->reg_read(uc->ctx, UC_ARM_REG_LR, &lr);
     printf("[ExceptionReturn] UC_ARM_REG_CURR_SP_MODE_IS_PSP=%d, UC_ARM_REG_OTHER_SP=%08x, UC_ARM_REG_SP=%08x, lr=%08x\n", sp_mode, other_sp, sp, lr); fflush(stdout);
     #endif
 
-    /* 
+    /*
      * After deactivating the exception, re-calc to see if a
      * pending exception can now be taken.
      */
@@ -920,18 +929,18 @@ void ExceptionReturn(uc_engine *uc, uint32_t ret_pc) {
             // return to Thread Mode which uses SP_process. Switch to SP_process
             uint32_t new_SPSEL_now_psp = 1;
             uint32_t SP_process, SP_main;
-            uc_reg_read(uc, UC_ARM_REG_SP, &SP_main);
-            uc_reg_read(uc, UC_ARM_REG_OTHER_SP, &SP_process);
+            uc->reg_read(uc->ctx, UC_ARM_REG_SP, &SP_main);
+            uc->reg_read(uc->ctx, UC_ARM_REG_OTHER_SP, &SP_process);
 
             // Back up SP_main
-            uc_reg_write(uc, UC_ARM_REG_OTHER_SP, &SP_main);
-            uc_reg_write(uc, UC_ARM_REG_SP, &SP_process);
+            uc->reg_write(uc->ctx, UC_ARM_REG_OTHER_SP, &SP_main);
+            uc->reg_write(uc->ctx, UC_ARM_REG_SP, &SP_process);
 
             // Switch the CPU state to indicate the new SPSEL state
             // 1. In pstate register
-            uc_reg_write(uc, UC_ARM_REG_SPSEL, &new_SPSEL_now_psp);
+            uc->reg_write(uc->ctx, UC_ARM_REG_SPSEL, &new_SPSEL_now_psp);
             // 2. In cached spsel field
-            uc_reg_write(uc, UC_ARM_REG_CURR_SP_MODE_IS_PSP, &new_SPSEL_now_psp);
+            uc->reg_write(uc->ctx, UC_ARM_REG_CURR_SP_MODE_IS_PSP, &new_SPSEL_now_psp);
         }
     }
 
@@ -951,7 +960,7 @@ void ExceptionReturn(uc_engine *uc, uint32_t ret_pc) {
 static void nvic_exception_return_hook(uc_engine *uc, uint64_t address, uint32_t size, void *user_data) {
     #ifdef DEBUG_NVIC
     uint32_t lr;
-    uc_reg_read(uc, UC_ARM_REG_LR, &lr);
+    uc->reg_read(uc->ctx, UC_ARM_REG_LR, &lr);
     printf("#################### Returning from interrupt (addr: 0x%lx, lr: 0x%08x)...\n", address, lr); fflush(stdout);
     #endif
 
@@ -959,7 +968,7 @@ static void nvic_exception_return_hook(uc_engine *uc, uint64_t address, uint32_t
 
     #ifdef DEBUG_NVIC
     uint32_t pc;
-    uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+    uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
     printf("############## Returned from interrupt. From: 0x%08lx to 0x%08x\n", address, pc); fflush(stdout);
     fflush(stdout);
     #endif
@@ -968,7 +977,7 @@ static void nvic_exception_return_hook(uc_engine *uc, uint64_t address, uint32_t
 static void handler_svc(uc_engine *uc, uint32_t intno, void *user_data) {
     #ifdef DEBUG_NVIC
     uint32_t pc;
-    uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+    uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
     printf("[SVC HOOK %08x] native SVC hook called, intno: %d\n", pc, intno); fflush(stdout);
     #endif
 
@@ -978,7 +987,7 @@ static void handler_svc(uc_engine *uc, uint32_t intno, void *user_data) {
         if(nvic.active_group_prio <= nvic.ExceptionPriority[EXCEPTION_NO_SVC]) {
             if(do_print_exit_info) {
                 uint32_t pc;
-                uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+                uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
                 printf("[SVC HOOK %08x] primask is set, so interrupts are masked. SVC prio: %d. As this would escalate to hardfault, exiting\n", pc, nvic.ExceptionPriority[EXCEPTION_NO_SVC]); fflush(stdout);
             }
             do_exit(uc, UC_ERR_EXCEPTION);
@@ -992,7 +1001,7 @@ static void handler_svc(uc_engine *uc, uint32_t intno, void *user_data) {
         // Alternatives could be breakpoints and the like, which we do not handle.
         if(do_print_exit_info) {
             uint32_t pc;
-            uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+            uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
             printf("[SVC HOOK %08x] %d is NOT an SVC, exiting\n", pc, intno); fflush(stdout);
         }
         do_exit(uc, UC_ERR_OK);
@@ -1039,18 +1048,22 @@ static void ExceptionEntry(uc_engine *uc, bool is_tail_chained, bool skip_instru
                 // We are coming from Thread Mode which uses SP_process. Switch it to SP_main
                 uint32_t new_SPSEL_not_psp = 0;
                 uint32_t SP_process, SP_main;
-                uc_reg_read(uc, UC_ARM_REG_SP, &SP_process);
-                uc_reg_read(uc, UC_ARM_REG_OTHER_SP, &SP_main);
+                uc->reg_read(uc->ctx, UC_ARM_REG_SP, &SP_process);
+                uc->reg_read(uc->ctx, UC_ARM_REG_OTHER_SP, &SP_main);
+
+                #ifdef DEBUG_NVIC
+                printf("[NVIC] switching from SP_process: %x to SP_main: %x\n", SP_process, SP_main); fflush(stdout);
+                #endif
 
                 // Back up SP_process
-                uc_reg_write(uc, UC_ARM_REG_OTHER_SP, &SP_process);
-                uc_reg_write(uc, UC_ARM_REG_SP, &SP_main);
+                uc->reg_write(uc->ctx, UC_ARM_REG_OTHER_SP, &SP_process);
+                uc->reg_write(uc->ctx, UC_ARM_REG_SP, &SP_main);
 
                 // Switch the CPU state to indicate the new SPSEL state
                 // 1. In pstate register
-                uc_reg_write(uc, UC_ARM_REG_SPSEL, &new_SPSEL_not_psp);
+                uc->reg_write(uc->ctx, UC_ARM_REG_SPSEL, &new_SPSEL_not_psp);
                 // 2. In cached spsel field
-                uc_reg_write(uc, UC_ARM_REG_CURR_SP_MODE_IS_PSP, &new_SPSEL_not_psp);
+                uc->reg_write(uc->ctx, UC_ARM_REG_CURR_SP_MODE_IS_PSP, &new_SPSEL_not_psp);
 
                 // Finally: Indicate that we switched in the LR value
                 new_lr |= NVIC_INTERRUPT_ENTRY_LR_PSPSWITCH_FLAG;
@@ -1060,23 +1073,23 @@ static void ExceptionEntry(uc_engine *uc, bool is_tail_chained, bool skip_instru
         // Tail Chaining: going from handler mode to handler mode. No stack switching required
         uint32_t prev_lr;
         // If we are chained, maintain the previous lr's SP switch and thread mode bits
-        uc_reg_read(uc, UC_ARM_REG_PC, &prev_lr);
+        uc->reg_read(uc->ctx, UC_ARM_REG_PC, &prev_lr);
         new_lr |= (prev_lr & (NVIC_INTERRUPT_ENTRY_LR_PSPSWITCH_FLAG | NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG));
     }
 
     // In any case we need to set our new LR
-    uc_reg_write(uc, UC_ARM_REG_LR, &new_lr);
+    uc->reg_write(uc->ctx, UC_ARM_REG_LR, &new_lr);
 
     // We inline ExceptionTaken here
 
     // Find the ISR entry point and set it
     uint32_t ExceptionNumber = nvic.pending_irq;
     uint32_t isr_entry;
-    uc_mem_read(uc, nvic.vtor + 4 * ExceptionNumber, &isr_entry, sizeof(isr_entry));
-    uc_reg_write(uc, UC_ARM_REG_PC, &isr_entry);
+    uc->mem_read(uc->ctx, nvic.vtor + 4 * ExceptionNumber, &isr_entry, sizeof(isr_entry));
+    uc->reg_write(uc->ctx, UC_ARM_REG_PC, &isr_entry);
 
     #ifdef DEBUG_NVIC
-    printf("Redirecting irq %d to isr: %08x\n", ExceptionNumber, isr_entry);
+    printf("Redirecting irq %d to isr: %08x lr: %08x\n", ExceptionNumber, isr_entry, new_lr);
     #endif
 
     // Prepare new XPSR state
@@ -1086,7 +1099,7 @@ static void ExceptionEntry(uc_engine *uc, bool is_tail_chained, bool skip_instru
     // Set active interrupt
     isr_xpsr &= ~xPSR_ISR_Msk;
     isr_xpsr |= ExceptionNumber;
-    uc_reg_write(uc, UC_ARM_REG_XPSR, &isr_xpsr);
+    uc->reg_write(uc->ctx, UC_ARM_REG_XPSR, &isr_xpsr);
 
     // Update nvic state with new active interrupt
     nvic.ExceptionActive[ExceptionNumber] = 1;
@@ -1127,7 +1140,7 @@ static void nvic_block_hook(uc_engine *uc, uint64_t address, uint32_t size, stru
         uint32_t basepri = GET_BASEPRI_NVIC(arg_nvic);
 
         #ifdef DEBUG_NVIC
-        printf("basepri == %d, primask == 0\n", basepri); fflush(stdout);
+        // printf("basepri == %d, primask == 0\n", basepri); fflush(stdout);
         #endif
 
         // Interrupts have previously been entirely disabled
@@ -1231,7 +1244,7 @@ void *nvic_take_snapshot(uc_engine *uc) {
     // NVIC snapshot: save the sysreg mem page
     char *result = malloc(size + PAGE_SIZE);
     memcpy(result, &nvic, size);
-    uc_mem_read(uc, SYSCTL_START, result + size, PAGE_SIZE);
+    uc->mem_read(uc->ctx, SYSCTL_START, result + size, PAGE_SIZE);
 
     return result;
 }
@@ -1240,7 +1253,7 @@ void nvic_restore_snapshot(uc_engine *uc, void *snapshot) {
     // Restore the nvic
     memcpy(&nvic, snapshot, sizeof(nvic));
     // Restore the sysreg mem page
-    uc_mem_write(uc, SYSCTL_START, ((char *) snapshot) + sizeof(nvic), PAGE_SIZE);
+    uc->mem_write(uc->ctx, SYSCTL_START, ((char *) snapshot) + sizeof(nvic), PAGE_SIZE);
 }
 
 void nvic_discard_snapshot(uc_engine *uc, void *snapshot) {
@@ -1284,35 +1297,35 @@ uc_err init_nvic(uc_engine *uc, uint32_t vtor, uint32_t num_irq, uint32_t p_inte
         config_disabled_interrupts[i] = EXCEPTION_NO_EXTERNAL_START + disabled_interrupts[i];
 
     // Get pointers to commonly used registers
-    if(uc_reg_ptr(uc, UC_ARM_REG_PRIMASK, (void **) &nvic.reg_daif_ptr)) {
+    if(uc->reg_ptr(uc->ctx, UC_ARM_REG_PRIMASK, (void **) &nvic.reg_daif_ptr)) {
         puts("[init_nvic] ERROR: uc_reg_tr"); exit(-1);
     }
-    if(uc_reg_ptr(uc, UC_ARM_REG_BASEPRI, (void **) &nvic.reg_basepri_ptr)) {
+    if(uc->reg_ptr(uc->ctx, UC_ARM_REG_BASEPRI, (void **) &nvic.reg_basepri_ptr)) {
         puts("[init_nvic] ERROR: uc_reg_tr"); exit(-1);
     }
-    if(uc_reg_ptr(uc, UC_ARM_REG_CURR_SP_MODE_IS_PSP, (void **) &reg_curr_sp_mode_is_psp_ptr)) {
+    if(uc->reg_ptr(uc->ctx, UC_ARM_REG_CURR_SP_MODE_IS_PSP, (void **) &reg_curr_sp_mode_is_psp_ptr)) {
         puts("[init_nvic] ERROR: uc_reg_tr"); exit(-1);
     }
 
     // Set the vtor. If it is uninitialized, read it from actual (restored) process memory
     if(vtor == NVIC_VTOR_NONE) {
-        uc_mem_read(uc, SYSCTL_VTOR, &nvic.vtor, sizeof(nvic.vtor));
+        uc->mem_read(uc->ctx, SYSCTL_VTOR, &nvic.vtor, sizeof(nvic.vtor));
         printf("[NVIC] Recovered vtor base: %x\n", nvic.vtor); fflush(stdout);
     } else {
         // We have MMIO vtor read fall through, so put vtor value in emulated memory
-        uc_mem_write(uc, SYSCTL_VTOR, &nvic.vtor, sizeof(nvic.vtor));
+        uc->mem_write(uc->ctx, SYSCTL_VTOR, &nvic.vtor, sizeof(nvic.vtor));
         nvic.vtor = vtor;
     }
 
-    uc_hook_add(uc, &nvic_exception_return_hook_handle, UC_HOOK_BLOCK, nvic_exception_return_hook, NULL, EXCEPT_MAGIC_RET_MASK, EXCEPT_MAGIC_RET_MASK | 0xf);
+    uc->block_hook_add(uc->ctx, &nvic_exception_return_hook_handle, UC_HOOK_BLOCK, nvic_exception_return_hook, NULL, EXCEPT_MAGIC_RET_MASK, EXCEPT_MAGIC_RET_MASK | 0xf);
 
-    uc_hook_add(uc, &nvic_block_hook_handle, UC_HOOK_BLOCK_UNCONDITIONAL, nvic_block_hook, &nvic, 1, 0);
+    uc->block_hook_add(uc->ctx, &nvic_block_hook_handle, UC_HOOK_BLOCK_UNCONDITIONAL, nvic_block_hook, &nvic, 1, 0);
 
     // 3. nvic MMIO range read/write handler
-    uc_hook_add(uc, &hook_mmio_write_handle, UC_HOOK_MEM_WRITE, hook_sysctl_mmio_write, NULL, SYSCTL_MMIO_BASE, SYSCTL_MMIO_END);
-    uc_hook_add(uc, &hook_mmio_read_handle, UC_HOOK_MEM_READ, hook_sysctl_mmio_read, NULL, SYSCTL_MMIO_BASE, SYSCTL_MMIO_END);
+    uc->mem_hook_add(uc->ctx, &hook_mmio_write_handle, UC_HOOK_MEM_WRITE, hook_sysctl_mmio_write, NULL, SYSCTL_MMIO_BASE, SYSCTL_MMIO_END);
+    uc->mem_hook_add(uc->ctx, &hook_mmio_read_handle, UC_HOOK_MEM_READ, hook_sysctl_mmio_read, NULL, SYSCTL_MMIO_BASE, SYSCTL_MMIO_END);
 
-    uc_hook_add(uc, &hook_svc_handle, UC_HOOK_INTR, handler_svc, NULL, 1, 0);
+    uc->int_hook_add(uc->ctx, &hook_svc_handle, UC_HOOK_INTR, handler_svc, NULL, 1, 0);
 
     subscribe_state_snapshotting(uc, nvic_take_snapshot, nvic_restore_snapshot, nvic_discard_snapshot);
 

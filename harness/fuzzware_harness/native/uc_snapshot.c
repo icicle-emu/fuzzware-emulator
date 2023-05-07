@@ -1,6 +1,8 @@
 #include "uc_snapshot.h"
 #include "state_snapshotting.h"
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 /*
  * Snapshotting of the unicorn engine state (registers and memory).
@@ -242,11 +244,11 @@ bool hook_invalid_write_on_demand_page_restore_handle(uc_engine *uc, uc_mem_type
 
         if(old_perms & UC_PROT_WRITE) {
             int res;
-            if((res = uc_mem_protect(uc, aligned, PAGE_SIZE, old_perms)) != UC_ERR_OK) {
+            if((res = uc->mem_protect(uc->ctx, aligned, PAGE_SIZE, old_perms)) != UC_ERR_OK) {
                 printf("[ERROR] uc_mem_protect failed for aligned=%08lx, perms=%x (err code: %d, msg: %s)\n", aligned, old_perms, res, uc_strerror(res)); fflush(stdout);
                 exit(-1);
             }
-            if (uc_mem_write(uc, address, &value, size) != UC_ERR_OK) {
+            if (uc->mem_write(uc->ctx, address, &value, size) != UC_ERR_OK) {
                 printf("[ERROR] uc_mem_write failed while trying to add page %#010lx. Write addr: %#010lx, size: %d, value: %08lx\n", aligned, address, size, value);
                 exit(-1);
             }
@@ -275,10 +277,10 @@ void *native_hooks_take_snapshot(uc_engine *uc) {
     result->curr_exit_at_hit_num = native_hooks_state.curr_exit_at_hit_num;
 
     // memcpy(result, native_hooks_state.curr_exit_at_hit_num, size);
-    uc_context_alloc(uc, &result->uc_saved_context);
-    uc_context_save(uc, result->uc_saved_context);
+    uc->context_alloc(uc->ctx, &result->uc_saved_context);
+    uc->context_save(uc->ctx, result->uc_saved_context);
 
-    uc_mem_regions(uc, &regions, &num_regions);
+    uc->mem_regions(uc->ctx, &regions, &num_regions);
     result->num_orig_regions = num_regions;
     result->orig_regions = regions;
 
@@ -335,7 +337,7 @@ void *native_hooks_take_snapshot(uc_engine *uc) {
             int cursor = 0;
             int is_nullpage = -1, prev_is_nullpage = -1;
             uint8_t *contents = malloc(size);
-            uc_mem_read(uc, regions[i].begin, contents, size);
+            uc->mem_read(uc->ctx, regions[i].begin, contents, size);
 
             for(cursor = 0; cursor < size; cursor += PAGE_SIZE) {
                 is_nullpage = 1;
@@ -377,7 +379,7 @@ void *native_hooks_take_snapshot(uc_engine *uc) {
             #ifdef DEBUG_STATE_RESTORE
             printf("Setting new perms %x (prev: %x) for 0x%lx, size: 0x%lx\n", new_perms, permissions, regions[i].begin, size);
             #endif
-            if(uc_mem_protect(uc, regions[i].begin, size, new_perms) == UC_ERR_ARG) {
+            if(uc->mem_protect(uc->ctx, regions[i].begin, size, new_perms) == UC_ERR_ARG) {
                 puts("ERROR: uc_mem_protect failed"); fflush(stdout);
                 exit(1);
             }
@@ -389,7 +391,7 @@ void *native_hooks_take_snapshot(uc_engine *uc) {
     result->num_restore_nullregions = 0;
 
     // Register mem protect handler for on-demand registration
-    if(uc_hook_add(uc, &result->on_demand_pages_handle, UC_HOOK_MEM_WRITE_PROT, hook_invalid_write_on_demand_page_restore_handle, result, 1, 0) != UC_ERR_OK) {
+    if(uc->mem_hook_add(uc->ctx, &result->on_demand_pages_handle, UC_HOOK_MEM_WRITE_PROT, hook_invalid_write_on_demand_page_restore_handle, result, 1, 0) != UC_ERR_OK) {
         puts("[ERROR] Could not add on-demand page restore hook"); fflush(stdout);
         exit(-1);
     }
@@ -400,7 +402,7 @@ void *native_hooks_take_snapshot(uc_engine *uc) {
 void native_hooks_restore_snapshot(uc_engine *uc, void *snapshot) {
     struct NativeHooksState *snapshot_state = (struct NativeHooksState *) snapshot;
 
-    uc_context_restore(uc, snapshot_state->uc_saved_context);
+    uc->context_restore(uc->ctx, snapshot_state->uc_saved_context);
     native_hooks_state.curr_exit_at_hit_num = snapshot_state->curr_exit_at_hit_num;
 
     // memory restore
@@ -408,7 +410,7 @@ void native_hooks_restore_snapshot(uc_engine *uc, void *snapshot) {
         #ifdef DEBUG_STATE_RESTORE
         printf("[] restoring 0x%lx bytes to 0x%lx\n", snapshot_state->restore_content_sizes[i], snapshot_state->restore_content_guest_addrs[i]);
         #endif
-        uc_mem_write(uc, snapshot_state->restore_content_guest_addrs[i], snapshot_state->restore_contents_ptrs[i], snapshot_state->restore_content_sizes[i]);
+        uc->mem_write(uc->ctx, snapshot_state->restore_content_guest_addrs[i], snapshot_state->restore_contents_ptrs[i], snapshot_state->restore_content_sizes[i]);
     }
 
     // nullpages
@@ -416,21 +418,21 @@ void native_hooks_restore_snapshot(uc_engine *uc, void *snapshot) {
         #ifdef DEBUG_STATE_RESTORE
         printf("[] memsetting 0x%lx bytes at 0x%lx\n", snapshot_state->restore_nullregion_starts[i], snapshot_state->restore_nullregion_sizes[i]);
         #endif
-        uc_mem_set(uc, snapshot_state->restore_nullregion_starts[i], 0, snapshot_state->restore_nullregion_sizes[i]);
+        uc->mem_set(uc->ctx, snapshot_state->restore_nullregion_starts[i], 0, snapshot_state->restore_nullregion_sizes[i]);
     }
 }
 
 void native_hooks_discard_snapshot(uc_engine *uc, void *snapshot) {
     struct NativeHooksState *snapshot_state = (struct NativeHooksState *) snapshot;
-    uc_free(snapshot_state->uc_saved_context);
+    uc->free(snapshot_state->uc_saved_context);
 
     for(int i=0; i < snapshot_state->num_content_regions; ++i) {
         free(snapshot_state->contents_ptrs[i]);
     }
 
-    uc_hook_del(uc, snapshot_state->on_demand_pages_handle);
+    uc->hook_del(uc->ctx, snapshot_state->on_demand_pages_handle);
 
-    uc_free(snapshot_state->orig_regions);
+    uc->free(snapshot_state->orig_regions);
 
     free(snapshot);
 }

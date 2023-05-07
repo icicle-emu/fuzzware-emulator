@@ -4,7 +4,7 @@
 
 #ifndef FUZZWARE_STATE_RESTORE
 #define FUZZWARE_STATE_RESTORE
-#include "unicorn/unicorn.h"
+#include "unicorn.h"
 
 #define INITIAL_NUM_STATE_SOURCES 8
 

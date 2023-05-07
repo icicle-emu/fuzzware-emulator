@@ -2,7 +2,7 @@
 UC_DIR=fuzzware-unicorn
 
 echo "[*] Cleaning Unicorn / QEMU..."
-pushd "$UC_DIR" && rm -f qemu/config-host.mak; make -C qemu distclean clean; make clean; popd
+# pushd "$UC_DIR" && rm -f qemu/config-host.mak; make -C qemu distclean clean; make clean; popd
 
 echo "[*] Building Unicorn..."
 

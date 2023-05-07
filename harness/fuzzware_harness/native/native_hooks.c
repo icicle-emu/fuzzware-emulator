@@ -14,8 +14,10 @@
 #include "state_snapshotting.h"
 #include "uc_snapshot.h"
 
-#include <unicorn/unicorn.h>
+#include "unicorn.h"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <stdint.h>
 #include <inttypes.h>
@@ -46,6 +48,8 @@
 #define SHM_FUZZ_ENV_VAR "__AFL_SHM_FUZZ_ID"
 #define FS_OPT_SHDMEM_FUZZ 0x01000000
 #define FS_OPT_ENABLED 0x80000001
+#define FS_OPT_NEWCMPLOG 0x02000000
+
 
 #define CPUID_ADDR 0xE000ED00
 const int CPUID_CORTEX_M4=0x410fc240;
@@ -146,13 +150,13 @@ void do_exit(uc_engine *uc, uc_err err) {
     if(!duplicate_exit) {
         custom_exit_reason = err;
         duplicate_exit = true;
-        uc_emu_stop(uc);
+        uc->emu_stop(uc->ctx);
     }
 }
 
 void hook_block_debug(uc_engine *uc, uint64_t address, uint32_t size, void *user_data) {
     uint32_t lr;
-    uc_reg_read(uc, UC_ARM_REG_LR, &lr);
+    uc->reg_read(uc->ctx, UC_ARM_REG_LR, &lr);
 
     printf("Basic Block: addr= 0x%016lx (lr=0x%x)\n", address, lr);
     fflush(stdout);
@@ -161,8 +165,8 @@ void hook_block_debug(uc_engine *uc, uint64_t address, uint32_t size, void *user
 void hook_debug_mem_access(uc_engine *uc, uc_mem_type type,
         uint64_t address, int size, int64_t value, void *user_data) {
     uint32_t pc, sp;
-    uc_reg_read(uc, UC_ARM_REG_SP, &sp);
-    uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+    uc->reg_read(uc->ctx, UC_ARM_REG_SP, &sp);
+    uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
 
     int64_t sp_offset = sp - address;
     if(sp_offset > -0x1000 && sp_offset < 0x2000) {
@@ -170,7 +174,7 @@ void hook_debug_mem_access(uc_engine *uc, uc_mem_type type,
             printf("        >>> Write: addr= 0x%08lx[SP:%c%04lx] size=%d data=0x%08lx (pc 0x%08x)\n", address, sp_offset >= 0 ? '+' : '-', sp_offset >= 0 ? sp_offset : -sp_offset, size, value, pc);
         } else {
             uint32_t read_value = 0;
-            uc_mem_read(uc, address, &read_value, size);
+            uc->mem_read(uc->ctx, address, &read_value, size);
             printf("        >>> Read: addr= 0x%08lx[SP:%c%04lx] size=%d data=0x%08x (pc 0x%08x)\n", address, sp_offset >= 0 ? '+' : '-', sp_offset >= 0 ? sp_offset : -sp_offset, size, read_value, pc);
         }
     } else {
@@ -178,7 +182,7 @@ void hook_debug_mem_access(uc_engine *uc, uc_mem_type type,
             printf("        >>> Write: addr= 0x%016lx size=%d data=0x%08lx (pc 0x%08x)\n", address, size, value, pc);
         } else {
             uint32_t read_value = 0;
-            uc_mem_read(uc, address, &read_value, size);
+            uc->mem_read(uc->ctx, address, &read_value, size);
             printf("        >>> Read: addr= 0x%016lx size=%d data=0x%08x (pc 0x%08x)\n", address, size, read_value, pc);
         }
     }
@@ -189,15 +193,15 @@ uc_err add_debug_hooks(uc_engine *uc) {
     uc_hook tmp;
     uc_err res = UC_ERR_OK;
     // Register unconditional hook for checking for handler presence
-    res |= uc_hook_add(uc, &tmp, UC_HOOK_BLOCK_UNCONDITIONAL, hook_block_debug, NULL, 1, 0);
-    res |= uc_hook_add(uc, &tmp, UC_HOOK_MEM_WRITE | UC_HOOK_MEM_READ, hook_debug_mem_access, 0, 1, 0);
+    res |= uc->block_hook_add(uc->ctx, &tmp, UC_HOOK_BLOCK_UNCONDITIONAL, hook_block_debug, NULL, 1, 0);
+    res |= uc->mem_hook_add(uc->ctx, &tmp, UC_HOOK_MEM_WRITE | UC_HOOK_MEM_READ, hook_debug_mem_access, 0, 1, 0);
     return res;
 }
 
 bool hook_debug_mem_invalid_access(uc_engine *uc, uc_mem_type type,
         uint64_t address, int size, int64_t value, void *user_data) {
     uint64_t pc = 0;
-    uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+    uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
     if(type == UC_MEM_WRITE_UNMAPPED || type == UC_MEM_WRITE_PROT) {
         printf("        >>> [ 0x%08lx ] INVALID Write: addr= 0x%016lx size=%d data=0x%016lx\n", pc, address, size, value);
     } else if (type == UC_MEM_READ_UNMAPPED || type == UC_MEM_READ_PROT){
@@ -363,7 +367,7 @@ void hook_mmio_access(uc_engine *uc, uc_mem_type type,
     uint32_t pc = 0;
     latest_mmio_fuzz_access_index = fuzz_cursor;
 
-    uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+    uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
 
     // TODO: optimize this lookup
     for (int i = 0; i < num_ignored_addresses; ++i)
@@ -401,7 +405,7 @@ void hook_mmio_access(uc_engine *uc, uc_mem_type type,
     #ifdef DEBUG
     printf(", value: 0x%lx\n", val); fflush(stdout);
     #endif
-    uc_mem_write(uc, addr, (uint8_t *)&val, size);
+    uc->mem_write(uc->ctx, addr, (uint8_t *)&val, size);
 
     out:
 
@@ -425,7 +429,7 @@ uc_err add_mmio_region(uc_engine *uc, uint64_t begin, uint64_t end) {
 
     uc_hook tmp;
     printf("add_mmio_region called! hooking 0x%08lx - 0x%08lx\n", begin, end);
-    return uc_hook_add(uc, &tmp, UC_HOOK_MEM_READ, hook_mmio_access, py_default_mmio_user_data, begin, end);
+    return uc->mem_hook_add(uc->ctx, &tmp, UC_HOOK_MEM_READ, hook_mmio_access, py_default_mmio_user_data, begin, end);
 }
 
 void hook_block_cond_py_handlers(uc_engine *uc, uint64_t address, uint32_t size, void *user_data) {
@@ -469,7 +473,7 @@ uc_err register_cond_py_handler_hook(uc_engine *uc, uc_cb_hookcode_t py_mmio_cal
 	}
 
     // Register unconditional hook for checking for handler presence
-    return uc_hook_add(uc, &hook_block_cond_py_handlers_handle, UC_HOOK_BLOCK_UNCONDITIONAL, hook_block_cond_py_handlers, user_data, 1, 0);
+    return uc->block_hook_add(uc->ctx, &hook_block_cond_py_handlers_handle, UC_HOOK_BLOCK_UNCONDITIONAL, hook_block_cond_py_handlers, user_data, 1, 0);
 }
 
 uc_err remove_function_handler_hook_address(uc_engine *uc, uint64_t address) {
@@ -483,7 +487,7 @@ uc_err remove_function_handler_hook_address(uc_engine *uc, uint64_t address) {
             --num_handlers;
             // Now fully remove the (unconditional) hook if we can
             if(!num_handlers) {
-                uc_hook_del(uc, hook_block_cond_py_handlers_handle);
+                uc->hook_del(uc->ctx, hook_block_cond_py_handlers_handle);
             }
             return UC_ERR_OK;
         }
@@ -519,11 +523,11 @@ void linear_mmio_model_handler(uc_engine *uc, uc_mem_type type, uint64_t addr, i
 
     #ifdef DEBUG
     uint32_t pc;
-    uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+    uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
     printf("[0x%08x] Native Linear MMIO handler: [0x%08lx] = [0x%x]\n", pc, addr, model_state->val); fflush(stdout);
     #endif
 
-    uc_mem_write(uc, addr, &model_state->val, sizeof(model_state->val));
+    uc->mem_write(uc->ctx, addr, &model_state->val, sizeof(model_state->val));
 }
 
 void constant_mmio_model_handler(uc_engine *uc, uc_mem_type type, uint64_t addr, int size, int64_t value, void *user_data) {
@@ -532,12 +536,12 @@ void constant_mmio_model_handler(uc_engine *uc, uc_mem_type type, uint64_t addr,
 
     #ifdef DEBUG
     uint32_t pc;
-    uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+    uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
     printf("[0x%08x] Native Constant MMIO handler: [0x%08lx] = [0x%lx]\n", pc, addr, val); fflush(stdout);
     #endif
 
     // TODO: This assumes shared endianness between host and target
-    uc_mem_write(uc, addr, &val, size);
+    uc->mem_write(uc->ctx, addr, &val, size);
 }
 
 void bitextract_mmio_model_handler(uc_engine *uc, uc_mem_type type, uint64_t addr, int size, int64_t value, void *user_data)
@@ -552,11 +556,11 @@ void bitextract_mmio_model_handler(uc_engine *uc, uc_mem_type type, uint64_t add
     }
 
     result_val = fuzzer_val << config->left_shift;
-    uc_mem_write(uc, addr, &result_val, size);
+    uc->mem_write(uc->ctx, addr, &result_val, size);
 
     #ifdef DEBUG
     uint32_t pc;
-    uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+    uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
     printf("[0x%08x] Native Bitextract MMIO handler: [0x%08lx] = [0x%lx] from %d byte input: %lx\n", pc, addr, result_val, config->byte_size, fuzzer_val); fflush(stdout);
     #endif
 }
@@ -568,7 +572,7 @@ void value_set_mmio_model_handler(uc_engine *uc, uc_mem_type type, uint64_t addr
     uint8_t fuzzer_val = 0;
     #ifdef DEBUG
     uint32_t pc;
-    uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+    uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
     #endif
 
     if(config->num_vals > 1) {
@@ -593,7 +597,7 @@ void value_set_mmio_model_handler(uc_engine *uc, uc_mem_type type, uint64_t addr
     fflush(stdout);
     #endif
 
-    uc_mem_write(uc, addr, (uint8_t *)&result_val, size);
+    uc->mem_write(uc->ctx, addr, (uint8_t *)&result_val, size);
 }
 
 uc_err register_constant_mmio_models(uc_engine *uc, uint64_t *starts, uint64_t *ends, uint32_t *pcs, uint32_t *vals, int num_ranges) {
@@ -671,7 +675,7 @@ uc_err register_value_set_mmio_models(uc_engine *uc, uint64_t *starts, uint64_t 
     for (int i = 0; i < num_ranges; ++i) {
         #ifdef DEBUG
         uint32_t pc;
-        uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+        uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
         printf("Registering value set model: [%x] %lx - %lx with numvalues, value_set: %d, [", pcs[i], starts[i], ends[i], value_nums[i]);
         for (uint32_t j = 0; j < value_nums[i]; ++j) {
             if(j) {
@@ -797,6 +801,9 @@ static void *init_bitmap(uc_engine *uc) {
     char *id_str;
     int shm_id;
 
+    // Indicate to AFL++ that we support `NEWCMPLOG` mode.
+    tmp |= FS_OPT_NEWCMPLOG;
+
     /* Tell AFL once that we are here  */
     id_str = getenv(SHM_ENV_VAR);
     if (id_str) {
@@ -811,6 +818,24 @@ static void *init_bitmap(uc_engine *uc) {
 
         if(write(FORKSRV_FD + 1, &tmp, 4) == 4) {
             do_fuzz = 1;
+
+            id_str = getenv(SHM_FUZZ_ENV_VAR);
+            if (id_str) {
+                // When shared memory mode is enabled, AFL++ expects us to read the status code back
+                // from the fuzzer.
+                if (read(FORKSRV_FD, &tmp, 4) != 4) {
+                    puts("[FORKSERVER SETUP] Failed to read status code from FORKSRV_FD");
+                    exit(-1);
+                }
+
+                uint32_t expected_status = FS_OPT_ENABLED | FS_OPT_SHDMEM_FUZZ;
+                if (tmp != expected_status) {
+                    printf("[FORKSERVER SETUP] Unexpected status code: %x (expected %x)\n",
+                        tmp, expected_status);
+                }
+            }
+
+
         } else {
             puts("[FORKSERVER SETUP] Got shared memory region, but no pipe. going for single input");
             do_fuzz = 0;
@@ -820,7 +845,7 @@ static void *init_bitmap(uc_engine *uc) {
         do_fuzz = 0;
     }
 
-    uc_fuzzer_init_cov(uc, bitmap, MAP_SIZE);
+    uc->fuzzer_init_cov(uc->ctx, bitmap, MAP_SIZE);
 
     return bitmap;
 }
@@ -830,9 +855,9 @@ static inline int run_single(uc_engine *uc) {
     uint64_t pc = 0;
     int sig = -1;
 
-    uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+    uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
 
-    status = uc_emu_start(uc, pc | 1, 0, 0, 0);
+    status = uc->emu_start(uc->ctx, pc | 1, 0, 0, 0);
 
     if(custom_exit_reason != UC_ERR_OK) {
         status = custom_exit_reason;
@@ -901,7 +926,7 @@ void fuzz_consumption_timeout_cb(uc_engine *uc, uint32_t id, void *user_data) {
 void test_timeout_cb(uc_engine *uc, uint32_t id, void *user_data) {
     if(!is_discovery_child) {
         uint32_t pc;
-        uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+        uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
         printf("Test timer triggered at pc 0x%08x\n", pc);
         fflush(NULL);
     }
@@ -911,7 +936,7 @@ void test_timeout_cb(uc_engine *uc, uint32_t id, void *user_data) {
 void instr_limit_timeout_cb(uc_engine *uc, uint32_t id, void *user_data) {
     if(do_print_exit_info) {
         uint32_t pc;
-        uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+        uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
         printf("Ran into instruction limit of %lu at 0x%08x - exiting\n", get_timer_reload_val(instr_limit_timer_id), pc);
     }
     do_exit(uc, UC_ERR_OK);
@@ -922,7 +947,7 @@ void *mmio_models_take_snapshot(uc_engine *uc) {
     uint32_t *passthrough_init_vals = malloc(size);
 
     for(int i = 0; i < num_ignored_addresses; ++i) {
-        uc_mem_read(uc, ignored_addresses[i], &passthrough_init_vals[i], sizeof(*passthrough_init_vals));
+        uc->mem_read(uc->ctx, ignored_addresses[i], &passthrough_init_vals[i], sizeof(*passthrough_init_vals));
     }
 
     return passthrough_init_vals;
@@ -933,7 +958,7 @@ void mmio_models_restore_snapshot(uc_engine *uc, void *snapshot) {
 
     // Restore the initial passthrough MMIO values
     for(int i = 0; i < num_ignored_addresses; ++i) {
-        uc_mem_write(uc, ignored_addresses[i], &passthrough_init_vals[i], sizeof(*passthrough_init_vals));
+        uc->mem_write(uc->ctx, ignored_addresses[i], &passthrough_init_vals[i], sizeof(*passthrough_init_vals));
     }
 }
 
@@ -943,7 +968,7 @@ void mmio_models_discard_snapshot(uc_engine *uc, void *snapshot) {
 
 uc_err init(uc_engine *uc, exit_hook_t p_exit_hook, int p_num_mmio_regions, uint64_t *p_mmio_starts, uint64_t *p_mmio_ends, void *p_py_default_mmio_user_data, uint32_t num_exit_at_bbls, uint64_t *exit_at_bbls, uint32_t p_exit_at_hit_limit, int p_do_print_exit_info, uint64_t p_fuzz_consumption_timeout, uint64_t p_instr_limit) {
     // TODO: assumes shared endianness
-    uc_mem_write(uc, CPUID_ADDR, &CPUID_CORTEX_M4, sizeof(CPUID_CORTEX_M4));
+    uc->mem_write(uc->ctx, CPUID_ADDR, &CPUID_CORTEX_M4, sizeof(CPUID_CORTEX_M4));
 
     if(p_exit_hook) {
         add_exit_hook(p_exit_hook);
@@ -953,7 +978,7 @@ uc_err init(uc_engine *uc, exit_hook_t p_exit_hook, int p_num_mmio_regions, uint
     do_print_exit_info = p_do_print_exit_info;
 
     if(do_print_exit_info) {
-        uc_hook_add(uc, &invalid_mem_hook_handle, UC_HOOK_MEM_WRITE_INVALID | UC_HOOK_MEM_READ_INVALID | UC_HOOK_MEM_FETCH_INVALID, hook_debug_mem_invalid_access, 0, 1, 0);
+        uc->mem_hook_add(uc->ctx, &invalid_mem_hook_handle, UC_HOOK_MEM_WRITE_INVALID | UC_HOOK_MEM_READ_INVALID | UC_HOOK_MEM_FETCH_INVALID, hook_debug_mem_invalid_access, 0, 1, 0);
     }
 
     // Add fuzz consumption timeout as timer
@@ -980,7 +1005,7 @@ uc_err init(uc_engine *uc, exit_hook_t p_exit_hook, int p_num_mmio_regions, uint
     {
         uint64_t tmp;
         uint64_t bbl_addr = exit_at_bbls[i] & (~1LL);
-        if (uc_hook_add(uc, &tmp, UC_HOOK_BLOCK, hook_block_exit_at, 0, bbl_addr, bbl_addr) != UC_ERR_OK)
+        if (uc->block_hook_add(uc->ctx, &tmp, UC_HOOK_BLOCK, hook_block_exit_at, 0, bbl_addr, bbl_addr) != UC_ERR_OK)
         {
             perror("Could not register exit-at block hook...\n");
             return -1;
@@ -1031,7 +1056,7 @@ uc_err emulate(uc_engine *uc, char *p_input_path, char *prefix_input_path) {
     uint64_t pc = 0;
     fflush(stdout);
 
-    uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+    uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
     init_bitmap(uc);
 
     /*
@@ -1086,7 +1111,7 @@ uc_err emulate(uc_engine *uc, char *p_input_path, char *prefix_input_path) {
             set_timer_reload_val(instr_limit_timer_id, required_ticks-2);
 
             // Execute the prefix
-            if(uc_emu_start(uc, pc | 1, 0, 0, 0)) {
+            if(uc->emu_start(uc->ctx, pc | 1, 0, 0, 0)) {
                 puts("[ERROR] Could not execute the first some steps");
                 exit(-1);
             }
@@ -1095,7 +1120,7 @@ uc_err emulate(uc_engine *uc, char *p_input_path, char *prefix_input_path) {
     } else {
         // child: Run until we hit an input consumption
         is_discovery_child = 1;
-        uc_err child_emu_status = uc_emu_start(uc, pc | 1, 0, 0, 0);
+        uc_err child_emu_status = uc->emu_start(uc->ctx, pc | 1, 0, 0, 0);
 
         // We do not expect to get here. The child should exit by itself in get_fuzz
         printf("[ERROR] Emulation stopped using just the prefix input (%d: %s)\n", child_emu_status, uc_strerror(child_emu_status));
@@ -1121,8 +1146,8 @@ uc_err emulate(uc_engine *uc, char *p_input_path, char *prefix_input_path) {
     // adjust_timers_for_unicorn_exit();
 
     if(do_fuzz) {
-        uc_fuzzer_reset_cov(uc, 1);
-        uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+        uc->fuzzer_reset_cov(uc->ctx, 1);
+        uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
         trigger_snapshotting(uc);
 
         // AFL-compatible Forkserver loop
@@ -1146,7 +1171,7 @@ uc_err emulate(uc_engine *uc, char *p_input_path, char *prefix_input_path) {
                 }
             }
 
-            uc_fuzzer_reset_cov(uc, 0);
+            uc->fuzzer_reset_cov(uc->ctx, 0);
 
             /* Send AFL the child pid thus it can kill it on timeout   */
             if(write(FORKSRV_FD + 1, &child_pid, 4) != 4) {
@@ -1177,7 +1202,7 @@ uc_err emulate(uc_engine *uc, char *p_input_path, char *prefix_input_path) {
             } else {
                 // Non-crashing exit (includes different timeouts)
                 uint32_t pc;
-                uc_reg_read(uc, UC_ARM_REG_PC, &pc);
+                uc->reg_read(uc->ctx, UC_ARM_REG_PC, &pc);
                 printf("Exited without crash at 0x%08x - If no other reason, we ran into one of the limits\n", pc);
             }
         }

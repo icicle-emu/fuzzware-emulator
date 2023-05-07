@@ -172,11 +172,25 @@ def resolve_region_file_paths(config_file_path, config):
     and relative paths.
     """
 
+    debug_info = config.get('debug_info')
+
     for _, region in config['memory_map'].items():
         path = region.get('file')
         if path:
             region['file'] = resolve_config_file_pattern(os.path.dirname(config_file_path), path)
             logger.info("Found path '{}' for pattern '{}'".format(region['file'], path))
+
+            # Check if there is file with the same name with the .elf file extension to use for
+            # debug info
+            name, ext = os.path.splitext(region['file'])
+            elf_path = name + ".elf"
+            if debug_info is None and os.path.exists(elf_path):
+                config['debug_info'] = elf_path
+                logger.info(f"Found path '{elf_path}' for debug info")
+
+    if debug_info:
+        config['debug_info'] = resolve_config_file_pattern(os.path.dirname(config_file_path), debug_info)
+        logger.info("Found path '{}' for debug info '{}'".format(config['debug_info'], debug_info))
 
 def load_config_deep(path):
     if not os.path.isfile(path):

@@ -3,6 +3,7 @@ import os
 import sys
 import logging
 
+import icicle
 
 from . import timer
 from .exit import has_exit_hooks, invoke_exit_callbacks
@@ -60,12 +61,16 @@ UC_HOOK_INTR_CB = ctypes.CFUNCTYPE(
 
 mmio_user_data = None
 def add_mmio_region(uc, start, end):
+    raise ValueError("unimplemented in icicle")
+
     global mmio_user_data
     if mmio_user_data is None:
         mmio_user_data = ctypes.cast(uc._callback_count, ctypes.c_void_p)
     assert native_lib.add_mmio_region(uc._uch, start, end, mmio_user_data)==0
 
 def load_fuzz(file_path):
+    raise ValueError("unimplemented in icicle")
+
     assert native_lib.load_fuzz(file_path.encode())==0
     sys.stdout.flush()
 
@@ -78,28 +83,31 @@ def emulate(uc, fuzz_file_path, prefix_input_file_path=None):
         # In case input path is an empty string, set it to None explicitly
         prefix_input_file_path = None
 
-    native_lib.emulate(uc._uch, fuzz_file_path.encode(), prefix_input_file_path)
+    uc.native_emulate(fuzz_file_path.encode(), prefix_input_file_path)
 
 def get_fuzz(uc, size):
     ptr = (ctypes.c_char * size).from_address(native_lib.get_fuzz_ptr(uc, size))
     return ptr.raw
 
 def fuzz_consumed():
-    return native_lib.fuzz_consumed()
+    return icicle.fuzz_consumed()
 
 def fuzz_remaining():
-    return native_lib.fuzz_remaining()
+    return icicle.fuzz_remaining()
 
 def get_latest_mmio_fuzz_access_size():
-    return native_lib.get_latest_mmio_fuzz_access_size()
+    return icicle.get_latest_mmio_fuzz_access_size()
 
 def get_latest_mmio_fuzz_access_index():
-    return native_lib.get_latest_mmio_fuzz_access_index()
+    return icicle.get_latest_mmio_fuzz_access_index()
 
 def register_cond_py_handler_hook(uc, handler_locs):
+    raise ValueError("unimplemented in icicle")
     if not handler_locs:
         logger.warning("no function handler hooks registered, skipping registration")
         return
+
+    raise ValueError("Python hooks unimplemented in icicle")
 
     arr = (ctypes.c_int64 * len(handler_locs))(*handler_locs)
 
@@ -119,6 +127,7 @@ def register_cond_py_handler_hook(uc, handler_locs):
 
 
 def remove_function_handler_hook_address(uc, address):
+    raise ValueError("Python hooks unimplemented in icicle")
     assert native_lib.remove_function_handler_hook_address(uc._uch, address) == 0
 
 
@@ -135,6 +144,8 @@ def _create_and_inject_c_callable_mem_hook(uc, py_fn):
 
 
 def _create_and_inject_c_callable_central_timer_hook(uc, py_fn):
+    cb = uc.register_central_timer_hook(py_fn)
+
     callback = py_fn
     # hack: In order to keep a uc reference around for the high level callback,
     # we sneak an additional callback into the uc object (as done in unicorn.py)
@@ -152,6 +163,7 @@ def _create_and_inject_c_callable_central_timer_hook(uc, py_fn):
 
 def register_py_handled_mmio_ranges(uc, python_handled_range_starts, python_handled_range_ends):
     global mmio_cb_wrapper
+    raise ValueError("Python hooks unimplemented in icicle")
 
     assert mmio_cb_wrapper is not None
     assert len(python_handled_range_starts) == len(python_handled_range_ends)
@@ -162,61 +174,68 @@ def register_py_handled_mmio_ranges(uc, python_handled_range_starts, python_hand
     assert native_lib.register_py_handled_mmio_ranges(uc._uch, mmio_cb_wrapper, starts_arr, ends_arr, len(python_handled_range_ends)) == 0
 
 def register_linear_mmio_models(uc, starts, ends, pcs, init_vals, steps):
-    assert len(starts) == len(ends) == len(init_vals) == len(steps)
-    starts_arr = (ctypes.c_int64 * len(starts))(*starts)
-    ends_arr = (ctypes.c_int64 * len(ends))(*ends)
-    init_vals_arr = (ctypes.c_int32 * len(init_vals))(*init_vals)
-    steps_arr = (ctypes.c_int32 * len(steps))(*steps)
-    pcs_arr = (ctypes.c_int32 * len(pcs))(*pcs)
+    assert uc.native_register_linear_mmio_models(starts, ends, pcs, init_vals, steps) == 0
+    # assert len(starts) == len(ends) == len(init_vals) == len(steps)
+    # starts_arr = (ctypes.c_int64 * len(starts))(*starts)
+    # ends_arr = (ctypes.c_int64 * len(ends))(*ends)
+    # init_vals_arr = (ctypes.c_int32 * len(init_vals))(*init_vals)
+    # steps_arr = (ctypes.c_int32 * len(steps))(*steps)
+    # pcs_arr = (ctypes.c_int32 * len(pcs))(*pcs)
 
-    assert native_lib.register_linear_mmio_models(uc._uch, starts_arr, ends_arr, pcs_arr, init_vals_arr, steps_arr, len(starts)) == 0
+    # assert native_lib.register_linear_mmio_models(uc._uch, starts_arr, ends_arr, pcs_arr, init_vals_arr, steps_arr, len(starts)) == 0
 
 def register_constant_mmio_models(uc, starts, ends, pcs, vals):
-    assert len(starts) == len(ends) == len(vals)==len(pcs)
-    starts_arr = (ctypes.c_int64 * len(starts))(*starts)
-    ends_arr = (ctypes.c_int64 * len(ends))(*ends)
-    vals_arr = (ctypes.c_int32 * len(vals))(*vals)
-    pcs_arr = (ctypes.c_int32 * len(pcs))(*pcs)
+    assert uc.native_register_constant_mmio_models(starts, ends, pcs, vals) == 0
+    # assert len(starts) == len(ends) == len(vals)==len(pcs)
+    # starts_arr = (ctypes.c_int64 * len(starts))(*starts)
+    # ends_arr = (ctypes.c_int64 * len(ends))(*ends)
+    # vals_arr = (ctypes.c_int32 * len(vals))(*vals)
+    # pcs_arr = (ctypes.c_int32 * len(pcs))(*pcs)
 
-    assert native_lib.register_constant_mmio_models(uc._uch, starts_arr, ends_arr, pcs_arr, vals_arr, len(starts)) == 0
+    # assert native_lib.register_constant_mmio_models(uc._uch, starts_arr, ends_arr, pcs_arr, vals_arr, len(starts)) == 0
 
 def register_bitextract_mmio_models(uc, starts, ends, pcs, byte_sizes, left_shifts, masks):
-    assert len(starts) == len(ends) == len(byte_sizes) == len(left_shifts) == len(pcs)
-    starts_arr = (ctypes.c_int64 * len(starts))(*starts)
-    ends_arr = (ctypes.c_int64 * len(ends))(*ends)
-    byte_sizes_arr = (ctypes.c_int8 * len(byte_sizes))(*byte_sizes)
-    left_shifts_arr = (ctypes.c_int8 * len(left_shifts))(*left_shifts)
-    masks_arr = (ctypes.c_int32 * len(masks))(*masks)
-    pcs_arr = (ctypes.c_int32 * len(pcs))(*pcs)
+    assert uc.native_register_bitextract_mmio_models(starts, ends, pcs, byte_sizes, left_shifts, masks) == 0
+    # assert len(starts) == len(ends) == len(byte_sizes) == len(left_shifts) == len(pcs)
+    # starts_arr = (ctypes.c_int64 * len(starts))(*starts)
+    # ends_arr = (ctypes.c_int64 * len(ends))(*ends)
+    # byte_sizes_arr = (ctypes.c_int8 * len(byte_sizes))(*byte_sizes)
+    # left_shifts_arr = (ctypes.c_int8 * len(left_shifts))(*left_shifts)
+    # masks_arr = (ctypes.c_int32 * len(masks))(*masks)
+    # pcs_arr = (ctypes.c_int32 * len(pcs))(*pcs)
 
-    assert native_lib.register_bitextract_mmio_models(uc._uch, starts_arr, ends_arr, pcs_arr, byte_sizes_arr, left_shifts_arr, masks_arr, len(starts)) == 0
+    # assert native_lib.register_bitextract_mmio_models(uc._uch, starts_arr, ends_arr, pcs_arr, byte_sizes_arr, left_shifts_arr, masks_arr, len(starts)) == 0
 
 def register_value_set_mmio_models(uc, starts, ends, pcs, value_sets):
-    assert len(starts) == len(ends) == len(value_sets) == len(value_sets) == len(pcs)
-    starts_arr = (ctypes.c_int64 * len(starts))(*starts)
-    ends_arr = (ctypes.c_int64 * len(ends))(*ends)
-    pcs_arr = (ctypes.c_int32 * len(pcs))(*pcs)
+    assert uc.native_register_value_set_mmio_models(starts, ends, pcs, value_sets) == 0
+    # assert len(starts) == len(ends) == len(value_sets) == len(value_sets) == len(pcs)
+    # starts_arr = (ctypes.c_int64 * len(starts))(*starts)
+    # ends_arr = (ctypes.c_int64 * len(ends))(*ends)
+    # pcs_arr = (ctypes.c_int32 * len(pcs))(*pcs)
 
-    value_nums_arr = (ctypes.c_int32 * len(value_sets))(*[len(value_set) for value_set in value_sets])
+    # value_nums_arr = (ctypes.c_int32 * len(value_sets))(*[len(value_set) for value_set in value_sets])
 
-    value_set_arrs = [(ctypes.c_int32 * len(value_set))(*value_set) for value_set in value_sets]
-    value_sets_arr_ptrs = (ctypes.POINTER(ctypes.c_ulong) * len(value_set_arrs))(*[ctypes.cast(value_set_arr, ctypes.POINTER(ctypes.c_ulong)) for value_set_arr in value_set_arrs])
+    # value_set_arrs = [(ctypes.c_int32 * len(value_set))(*value_set) for value_set in value_sets]
+    # value_sets_arr_ptrs = (ctypes.POINTER(ctypes.c_ulong) * len(value_set_arrs))(*[ctypes.cast(value_set_arr, ctypes.POINTER(ctypes.c_ulong)) for value_set_arr in value_set_arrs])
 
-    assert native_lib.register_value_set_mmio_models(uc._uch, starts_arr, ends_arr, pcs_arr, value_nums_arr, value_sets_arr_ptrs, len(starts)) == 0
+    # assert native_lib.register_value_set_mmio_models(uc._uch, starts_arr, ends_arr, pcs_arr, value_nums_arr, value_sets_arr_ptrs, len(starts)) == 0
 
-def set_ignored_mmio_addresses(addresses, pcs):
-    addrs_arr = (ctypes.c_int64 * len(addresses))(*addresses)
-    pcs_arr = (ctypes.c_uint32 * len(pcs))(*pcs)
 
-    assert native_lib.set_ignored_mmio_addresses(
-        addrs_arr, pcs_arr, len(addrs_arr)
-    ) == 0
+def set_ignored_mmio_addresses(uc, addresses, pcs):
+    assert uc.native_set_ignored_mmio_addresses(addresses, pcs) == 0
+
+    # addrs_arr = (ctypes.c_int64 * len(addresses))(*addresses)
+    # pcs_arr = (ctypes.c_uint32 * len(pcs))(*pcs)
+
+    # assert native_lib.set_ignored_mmio_addresses(
+    #     addrs_arr, pcs_arr, len(addrs_arr)
+    # ) == 0
 
 def init_nvic(uc, vtor, num_vecs, interrupt_limit=DEFAULT_MAX_INTERRUPTS, disabled_interrupts=()):
     global native_lib
     logger.debug("Calling init_nvic with vtor=0x{:08x}, num_vecs: {}".format(vtor, num_vecs))
-    disabled_interrupts_arr = (ctypes.c_int32 * len(disabled_interrupts))(*disabled_interrupts)
-    assert native_lib.init_nvic(uc._uch, vtor, num_vecs, interrupt_limit, len(disabled_interrupts), disabled_interrupts_arr) == 0
+    # disabled_interrupts_arr = (ctypes.c_int32 * len(disabled_interrupts))(*disabled_interrupts)
+    assert uc.native_init_nvic(vtor, num_vecs, interrupt_limit, disabled_interrupts) == 0
 
 def init_native_tracing(uc, bbl_set_trace_path, bbl_hash_path, mmio_set_trace_path, mmio_ranges):
     global native_lib
@@ -239,41 +258,41 @@ def init_native_tracing(uc, bbl_set_trace_path, bbl_hash_path, mmio_set_trace_pa
     else:
         bbl_hash_path = bbl_hash_path.encode()
 
-    assert(native_lib.init_tracing(uc._uch, bbl_set_trace_path, bbl_hash_path, mmio_set_trace_path, len(mmio_ranges), mmio_region_starts_arr, mmio_region_ends_arr) == 0)
+    # assert(native_lib.init_tracing(uc._uch, bbl_set_trace_path, bbl_hash_path, mmio_set_trace_path, len(mmio_ranges), mmio_region_starts_arr, mmio_region_ends_arr) == 0)
+    assert(uc.native_init_tracing(bbl_set_trace_path, bbl_hash_path, mmio_set_trace_path, mmio_ranges) == 0)
 
 def nvic_set_pending(vec_num):
     global native_lib
+    raise ValueError("unimplemented in icicle")
     native_lib.nvic_set_pending(vec_num)
 
 def init_timer_hook(uc, global_timer_scale):
-    global native_lib
-    global timer_cb_user_data
-    global timer_cb_wrapper
+    # global native_lib
+    # global timer_cb_user_data
+    # global timer_cb_wrapper
 
-    cb, user_data = _create_and_inject_c_callable_central_timer_hook(uc, timer.central_timer_hook)
-    timer_cb_wrapper = cb
-    timer_cb_user_data = user_data
-
-    assert native_lib.init_timer_hook(uc._uch, global_timer_scale) == 0
+    # cb, user_data = _create_and_inject_c_callable_central_timer_hook(uc, timer.central_timer_hook)
+    # timer_cb_wrapper = cb
+    # timer_cb_user_data = user_data
+    assert uc.native_init_timer_hook(global_timer_scale) == 0
 
 def init_systick(uc, reload_val):
-    global native_lib
-
-    assert native_lib.init_systick(uc._uch, reload_val) == 0
+    assert uc.native_init_systick(reload_val) == 0
 
 IRQ_NOT_USED=0xffffffff
 def add_timer(reload_val, callback=None, isr_num=IRQ_NOT_USED):
-    global timer_cb_wrapper
-    global timer_cb_user_data
-    global native_lib
+    # global timer_cb_wrapper
+    # global timer_cb_user_data
+    # global native_lib
 
-    assert timer_cb_wrapper is not None and timer_cb_user_data is not None
+    # assert timer_cb_wrapper is not None and timer_cb_user_data is not None
     # While technically allowed in the C code, invoking a callback and pending an interrupt at the same time is nothing we would like to support
     assert not (callback is not None and isr_num != IRQ_NOT_USED)
 
-    passed_cb = timer_cb_wrapper if callback is not None else 0
+    # passed_cb = timer_cb_wrapper if callback is not None else 0
 
-    return native_lib.add_timer(reload_val, passed_cb, timer_cb_user_data, isr_num)
+    return uc.add_timer(reload_val, callback, isr_num)
+    # return native_lib.add_timer(reload_val, passed_cb, timer_cb_user_data, isr_num)
 
 
 def is_running(timer_id):
@@ -282,30 +301,36 @@ def is_running(timer_id):
 
 def get_global_ticker():
     global native_lib
+    raise ValueError("unimplemented in icicle")
     return native_lib.get_global_ticker()
 
 def rem_timer(uc, timer_id):
     global native_lib
+    raise ValueError("unimplemented in icicle")
     assert native_lib.rem_timer(uc, timer_id) == 0
 
 def reload_timer(timer_id):
     global native_lib
+    raise ValueError("unimplemented in icicle")
     assert native_lib.reload_timer(timer_id) == 0
 
 def start_timer(uc, timer_id):
     global native_lib
+    raise ValueError("unimplemented in icicle")
     assert native_lib.start_timer(uc, timer_id) == 0
 
 def stop_timer(uc, timer_id):
     global native_lib
+    raise ValueError("unimplemented in icicle")
     assert native_lib.stop_timer(uc, timer_id) == 0
 
 # uc_hook add_interrupt_trigger(uc_engine *uc, uint64_t addr, uint32_t irq, uint32_t num_skips, uint32_t num_pends, uint32_t do_fuzz);
 def add_interrupt_trigger(uc, addr, irq, num_skips, num_pends, fuzz_mode, trigger_mode, every_nth_tick):
     assert fuzz_mode < len(FUZZ_MODES) and trigger_mode < len(TRIGGER_MODES)
-    assert native_lib.add_interrupt_trigger(uc._uch, addr, irq, num_skips, num_pends, fuzz_mode, trigger_mode, every_nth_tick) == 0
+    assert uc.native_add_interrupt_trigger(addr, irq, num_skips, num_pends, fuzz_mode, trigger_mode, every_nth_tick) == 0
 
 def register_native_debug_hooks(uc):
+    raise ValueError("unimplemented in icicle")
     assert(native_lib.add_debug_hooks(uc._uch) == 0)
 
 def load_native_lib(native_lib_path):
@@ -317,6 +342,7 @@ def load_native_lib(native_lib_path):
 
 def do_exit(uc, status, sig=-1):
     global native_lib
+    raise ValueError("unimplemented in icicle")
     native_lib.do_exit(uc, status, sig)
 
 def init(uc, mmio_regions, exit_at_bbls, exit_at_hit_num, do_print_exit_info, fuzz_consumption_timeout=DEFAULT_FUZZ_CONSUMPTION_TIMEOUT, instr_limit=DEFAULT_BASIC_BLOCK_LIMIT):
@@ -406,18 +432,19 @@ def init(uc, mmio_regions, exit_at_bbls, exit_at_hit_num, do_print_exit_info, fu
     # uc_err emulate(uc_engine *uc, char *input_path, char *prefix_input_path);
     _setup_prototype(native_lib, "emulate", ctypes.c_int, uc_engine, ctypes.c_char_p, ctypes.c_char_p)
 
-    mmio_region_starts, mmio_region_ends = zip(*mmio_regions)
-    mmio_region_starts_arr = (ctypes.c_int64 * len(mmio_region_starts))(*mmio_region_starts)
-    mmio_region_ends_arr = (ctypes.c_int64 * len(mmio_region_ends))(*mmio_region_ends)
+    # mmio_region_starts, mmio_region_ends = zip(*mmio_regions)
+    # mmio_region_starts_arr = (ctypes.c_int64 * len(mmio_region_starts))(*mmio_region_starts)
+    # mmio_region_ends_arr = (ctypes.c_int64 * len(mmio_region_ends))(*mmio_region_ends)
 
-    mmio_cb_wrapper, user_data = _create_and_inject_c_callable_mem_hook(uc, mmio_access_handler_wrapper_hook)
+    # mmio_cb_wrapper, user_data = _create_and_inject_c_callable_mem_hook(uc, mmio_access_handler_wrapper_hook)
+    user_data = None
 
     if has_exit_hooks():
-        exit_cb = ctypes.cast(EXIT_CB(invoke_exit_callbacks), EXIT_CB)
+        exit_cb = invoke_exit_callbacks # ctypes.cast(EXIT_CB(invoke_exit_callbacks), EXIT_CB)
         obj_refs.append(exit_cb)
     else:
-        exit_cb = 0
+        exit_cb = None
 
-    num_exit_at_bbls = len(exit_at_bbls)
-    exit_at_bbls_arr = (ctypes.c_int64 * len(exit_at_bbls))(*exit_at_bbls)
-    assert native_lib.init(uc._uch, exit_cb, len(mmio_regions), mmio_region_starts_arr, mmio_region_ends_arr, user_data, num_exit_at_bbls, exit_at_bbls_arr, exit_at_hit_num, do_print_exit_info, fuzz_consumption_timeout, instr_limit) == 0
+    # num_exit_at_bbls = len(exit_at_bbls)
+    # exit_at_bbls_arr = (ctypes.c_int64 * len(exit_at_bbls))(*exit_at_bbls)
+    assert uc.native_init(exit_cb, mmio_regions, user_data, exit_at_bbls, exit_at_hit_num, do_print_exit_info, fuzz_consumption_timeout, instr_limit) == 0

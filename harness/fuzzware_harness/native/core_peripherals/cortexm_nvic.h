@@ -4,7 +4,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "unicorn/unicorn.h"
+#include "../unicorn.h"
 #include "cortexm_exception_nums.h"
 #include "cortexm_systick.h"
 
@@ -79,7 +79,7 @@
 
 struct CortexmNVIC {
     // We put some members to the front as they are required in the basic block hot path
-    
+
     // Direct access pointers for interrupt disable / base priority flags
     uint8_t *reg_daif_ptr;
     int32_t *reg_basepri_ptr;

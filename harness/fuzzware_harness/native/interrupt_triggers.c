@@ -3,6 +3,8 @@
 #include "core_peripherals/cortexm_nvic.h"
 #include "timer.h"
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 // 0. Constants
 #define MAX_INTERRUPT_TRIGGERS 256
@@ -160,7 +162,7 @@ uc_hook add_interrupt_trigger(uc_engine *uc, uint64_t addr, uint32_t irq, uint32
     trigger->trigger_mode = trigger_mode;
 
     if(trigger_mode == IRQ_TRIGGER_MODE_ADDRESS) {
-        if (uc_hook_add(uc, &trigger->hook_handle, UC_HOOK_BLOCK, (void *)interrupt_trigger_tick_block_hook, trigger, addr, addr) != UC_ERR_OK) {
+        if (uc->block_hook_add(uc->ctx, &trigger->hook_handle, UC_HOOK_BLOCK, (void *)interrupt_trigger_tick_block_hook, trigger, addr, addr) != UC_ERR_OK) {
             perror("[INTERRUPT_TRIGGERS ERROR] Failed adding block hook.\n");
             exit(-1);
         }
