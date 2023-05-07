@@ -120,7 +120,6 @@ uint8_t coverage_bitmap[MAP_SIZE];
 static void determine_input_mode() {
     char *id_str;
     int shm_id;
-    int tmp;
 
     id_str = getenv(SHM_FUZZ_ENV_VAR);
     if (id_str) {
@@ -128,12 +127,6 @@ static void determine_input_mode() {
         fuzz = shmat(shm_id, NULL, 0);
         if (!fuzz || fuzz == (void *)-1) {
             perror("[!] could not access fuzzing shared memory");
-            exit(1);
-        }
-
-        // AFL++ detected. Read its status value
-        if(read(FORKSRV_FD, &tmp, 4) != 4) {
-            perror("[!] did not receive AFL++ status value");
             exit(1);
         }
 
