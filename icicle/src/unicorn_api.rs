@@ -292,6 +292,12 @@ impl icicle_vm::cpu::Environment for FuzzwareEnvironment {
                     }
                 }
             }
+            ExceptionCode::Sleep => {
+                // Treat sleeps as NOPs
+                cpu.exception.clear();
+                let next = cpu.read_pc() + 2;
+                cpu.write_pc(next);
+            }
             ExceptionCode::ShadowStackInvalid => {
                 if cpu.exception.value & NVIC_EXCEPT_MAGIC_RET_MASK == NVIC_EXCEPT_MAGIC_RET_MASK {
                     self.handle_nvic_exception(cpu);
